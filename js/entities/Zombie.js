@@ -1,4 +1,4 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js";
+import * as THREE from "https://unpkg.com/three@0.179.1/build/three.module.js";
 import {Entity} from "./Entity.js?v=16";
 import {INFO} from "../world/Block.js?v=16";
 export class Zombie extends Entity{

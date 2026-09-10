@@ -1,5 +1,10 @@
-# Voxel Survival — Universe 16 Stable Engine
+# Voxel Survival — Universe 17
 
-Исправлен реальный синтаксический баг в `js/rendering/Lighting.js`: `selected?.id===110?.65` заменён на корректный тернарный оператор. Это и вызывало `SyntaxError: Unexpected token ':' / Expected ')'`.
+Safari startup fix.
 
-Запуск: откройте игру через HTTP(S), а не `file://`.
+- Three.js import switched from jsDelivr to UNPKG.
+- Service Worker cache bumped to v17.
+- JS module URLs bumped to v17.
+- Startup errors now show filename/line/column when Safari provides them.
+- Retry button reloads the engine.
+- World generation still begins only after PLAY.

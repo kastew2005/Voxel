@@ -1,4 +1,4 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js";
+import * as THREE from "https://unpkg.com/three@0.179.1/build/three.module.js";
 export class Weather{
  constructor(scene,quality={}){this.scene=scene;this.quality=quality;this.rain=new THREE.Group();this.lines=[];this.rainCount=quality.rain||160;for(let i=0;i<this.rainCount;i++){const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(.07,-1.3,0)]),m=new THREE.LineBasicMaterial({color:0x9fc8ff,transparent:true,opacity:.35});const l=new THREE.Line(g,m);this.rain.add(l);this.lines.push(l)}scene.add(this.rain);this.flash=0;this.clouds=this.makeClouds();scene.add(this.clouds)}
  makeClouds(){const g=new THREE.Group();for(let i=0;i<(this.quality?.clouds||18);i++){const m=new THREE.Mesh(new THREE.BoxGeometry(7+Math.random()*9,1+Math.random()*1.5,4+Math.random()*6),new THREE.MeshLambertMaterial({color:0xffffff,transparent:true,opacity:.08});m.position.set((Math.random()-.5)*180,75+Math.random()*18,(Math.random()-.5)*180);g.add(m)}return g}

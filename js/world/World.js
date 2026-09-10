@@ -1,4 +1,4 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js";
+import * as THREE from "https://unpkg.com/three@0.179.1/build/three.module.js";
 import {Chunk} from "./Chunk.js?v=16";
 import {Generator} from "./Generator.js?v=16";
 import {BLOCK,INFO} from "./Block.js?v=16";

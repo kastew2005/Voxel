@@ -1,4 +1,4 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js";
+import * as THREE from "https://unpkg.com/three@0.179.1/build/three.module.js";
 export class Particles{
  constructor(scene,quality={}){this.scene=scene;this.items=[];this.maxItems=quality.particles||220;this.cubeGeo=new THREE.BoxGeometry(.045,.045,.045)}
  burst(pos,color=0xffffff,n=10,force=3){n=Math.min(n,Math.max(0,this.maxItems-this.items.length));for(let i=0;i<n;i++){const m=new THREE.Mesh(this.cubeGeo,new THREE.MeshBasicMaterial({color,transparent:true}));m.position.copy(pos);m.userData.v=new THREE.Vector3((Math.random()-.5)*force,Math.random()*force,(Math.random()-.5)*force);m.userData.life=.35+Math.random()*.55;this.scene.add(m);this.items.push(m)}}
