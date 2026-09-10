@@ -1,5 +1,5 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js";
-import {INFO} from "../world/Block.js?v=15";
+import {INFO} from "../world/Block.js?v=16";
 export class Lighting{
  constructor(scene,world,cfg){
   this.scene=scene;this.world=world;this.cfg=cfg;this.sun=new THREE.DirectionalLight(0xfff1d0,1.5);this.moon=new THREE.DirectionalLight(0x8ab8ff,.2);this.hemi=new THREE.HemisphereLight(0xbfe8ff,0x25301d,1);this.scene.add(this.sun,this.moon,this.hemi);
@@ -10,7 +10,7 @@ export class Lighting{
  makeStars(){const g=new THREE.BufferGeometry(),a=[];for(let i=0;i<420;i++){const r=190+Math.random()*40,theta=Math.random()*Math.PI*2,phi=Math.acos(2*Math.random()-1);a.push(Math.sin(phi)*Math.cos(theta)*r,Math.cos(phi)*r,Math.sin(phi)*Math.sin(theta)*r)}g.setAttribute("position",new THREE.Float32BufferAttribute(a,3));return new THREE.Points(g,new THREE.PointsMaterial({color:0xffffff,size:.8,transparent:true,opacity:.0,sizeAttenuation:false}))}
  update(time,player,dt=.016){
   this.clock+=dt;const a=time%(Math.PI*2),day=Math.max(0,Math.sin(a)),night=1-day;
-  const selected=player.inventory?.selectedItem?.();this.handLight.intensity=(selected?.id===109?0.95:selected?.id===110?.65:0);this.handLight.position.set(player.pos.x+.3,player.pos.y+1.25,player.pos.z+.25);
+  const selected=player.inventory?.selectedItem?.();this.handLight.intensity=(selected?.id===109 ? 0.95 : selected?.id===110 ? 0.65 : 0);this.handLight.position.set(player.pos.x+.3,player.pos.y+1.25,player.pos.z+.25);
   this.sun.position.set(Math.cos(a)*170,Math.sin(a)*170,80);this.moon.position.set(-Math.cos(a)*130,-Math.sin(a)*130,40);this.sun.intensity=.06+day*1.55;this.moon.intensity=.02+night*.42;this.hemi.intensity=.28+day*.72;
   const sky=new THREE.Color().setHSL(.57,.68,.10+.38*day);this.scene.background=sky;this.fog.color.copy(sky);this.fog.density=.0035+night*.008;this.scene.fog=this.fog;
   this.starField.material.opacity=Math.max(0,night-.08)*.9;this.sun.shadow.camera.updateProjectionMatrix();this.sun.target.position.copy(player.pos);this.scene.add(this.sun.target);

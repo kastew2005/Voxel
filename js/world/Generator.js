@@ -1,4 +1,4 @@
-import {BLOCK} from './Block.js?v=15';
+import {BLOCK} from './Block.js?v=16';
 function hash(x,z,s){let n=(x*374761393+z*668265263+s*1442695041)|0;n=(n^(n>>>13))*1274126177|0;return ((n^(n>>>16))>>>0)/4294967296}
 function smooth(x,z,s){const xi=Math.floor(x),zi=Math.floor(z),xf=x-xi,zf=z-zi,u=xf*xf*(3-2*xf),v=zf*zf*(3-2*zf);const a=hash(xi,zi,s),b=hash(xi+1,zi,s),c=hash(xi,zi+1,s),d=hash(xi+1,zi+1,s);return a+(b-a)*u+((c+(d-c)*u)-(a+(b-a)*u))*v}
 export class Generator{

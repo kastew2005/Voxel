@@ -1,8 +1,5 @@
-# Voxel Survival — Universe 15
+# Voxel Survival — Universe 16 Stable Engine
 
-Stable startup hotfix.
+Исправлен реальный синтаксический баг в `js/rendering/Lighting.js`: `selected?.id===110?.65` заменён на корректный тернарный оператор. Это и вызывало `SyntaxError: Unexpected token ':' / Expected ')'`.
 
-- Главный экран не блокируется загрузкой движка.
-- JS-модули получают cache-busting `?v=15`.
-- Service Worker v15 использует network-first для JS, чтобы старый код не запускался после обновления.
-- Первый чанк мира создаётся только после «ИГРАТЬ».
+Запуск: откройте игру через HTTP(S), а не `file://`.

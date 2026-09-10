@@ -1,4 +1,4 @@
-import {BLOCK,ITEM,INFO,ICON} from "../world/Block.js?v=15";
+import {BLOCK,ITEM,INFO,ICON} from "../world/Block.js?v=16";
 const key=(p)=>`${p.x|0},${p.y|0},${p.z|0}`;
 export class SurvivalSystems{
  constructor(game){this.game=game;this.chests=new Map();this.furnaces=new Map();this.crops=new Map();this.xp=0;this.level=1;this.achievements=new Set();this.lastWorldTick=0}
