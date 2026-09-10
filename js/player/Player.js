@@ -1,5 +1,5 @@
 import * as THREE from "https://unpkg.com/three@0.179.1/build/three.module.js";
-import {BLOCK,INFO} from "../world/Block.js?v=18";
+import {BLOCK,INFO} from "../world/Block.js?v=19";
 export class Player{
  constructor(camera,world,controls,cfg){this.camera=camera;this.world=world;this.controls=controls;this.cfg=cfg;this.pos=new THREE.Vector3(0,70,0);this.vel=new THREE.Vector3();this.onGround=false;this.health=20;this.hunger=20;this.inventory=null;this.walkTime=0;this.sprint=false}
  setInventory(inv){this.inventory=inv}

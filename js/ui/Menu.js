@@ -4,7 +4,7 @@ export class Menu{
   q('settingsButton').onclick=()=>q('settingsPanel').classList.remove('hidden');q('closeSettings').onclick=()=>q('settingsPanel').classList.add('hidden');
   q('creditsButton').onclick=()=>q('creditsPanel').classList.remove('hidden');q('closeCredits').onclick=()=>q('creditsPanel').classList.add('hidden');
   q('installButton').onclick=()=>game.showInstall();q('nativeInstallButton').onclick=()=>game.installApp();q('closeInstall').onclick=()=>q('installPanel').classList.add('hidden');
-  q('fullscreenButton').onclick=()=>game.toggleFullscreen();q('fullscreenPauseButton').onclick=()=>game.toggleFullscreen();
+  q('fullscreenButton').onclick=()=>game.toggleFullscreen();q('fullscreenPauseButton').onclick=()=>game.toggleFullscreen();q('rotateButton')?.addEventListener('click',()=>game.requestLandscape?.());
   q('lanButton')?.addEventListener('click',()=>q('lanPanel')?.classList.remove('hidden'));q('closeLan')?.addEventListener('click',()=>q('lanPanel')?.classList.add('hidden'));q('lanHost')?.addEventListener('click',()=>game.hostLAN());q('lanConnect')?.addEventListener('click',()=>game.connectLAN());
   const rd=q('renderDistance'),rv=q('renderValue'),sen=q('sensitivity'),sv=q('sensitivityValue'),quality=q('qualitySelect');rd.oninput=()=>{rv.textContent=rd.value;game.world.cfg.WORLD.RENDER_DISTANCE=+rd.value;game.world.lastCenter=''};sen.oninput=()=>{sv.textContent=sen.value;game.controls.sensitivity=+sen.value*.0003125};quality?.addEventListener('change',e=>game.setQuality(e.target.value));q('reducedMotion').onchange=e=>game.reducedMotion=e.target.checked;
  }

@@ -1,10 +1,16 @@
-# Voxel Survival — Universe 18
+# Voxel Survival — Universe 19
 
-Safari startup fix.
+Performance + visual redesign release.
 
-- Three.js import switched from jsDelivr to UNPKG.
-- Service Worker cache bumped to v17.
-- JS module URLs bumped to v17.
-- Startup errors now show filename/line/column when Safari provides them.
-- Retry button reloads the engine.
-- World generation still begins only after PLAY.
+- Original Minecraft-inspired menu redesign with a generated voxel landscape backdrop.
+- 64×64 procedural pixel textures with deterministic detail, nearest filtering and no texture downloads.
+- Chunk meshing optimized: visible faces are grouped into contiguous geometry batches, reducing WebGL draw calls dramatically.
+- Particle materials/geometries are reused to reduce garbage collection and mobile memory pressure.
+- Adaptive pixel ratio, lighter mobile shadows/lights/particles and smaller mesh budgets for smoother iPhone performance.
+- One raycast result is reused by HUD and block outline each frame.
+- Safari startup version bumped to Universe 19 and Service Worker cache updated.
+- Three.js remains on UNPKG.
+
+## Deploy
+
+Upload the contents of this folder to GitHub Pages. After deployment, reload Safari once with the page refreshed so the new Service Worker cache (`v19`) is installed.
