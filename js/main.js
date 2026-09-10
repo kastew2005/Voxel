@@ -1,16 +1,67 @@
 import * as THREE from "https://unpkg.com/three@0.179.1/build/three.module.js";
-import {CONFIG} from "./config.js?v=19";import {QualityManager} from "./QualityManager.js?v=19";import {World} from "./world/World.js?v=19";import {Player} from "./player/Player.js?v=19";import {Controls} from "./player/Controls.js?v=19";import {MobManager} from "./entities/Mob.js?v=19";import {Particles} from "./rendering/Particles.js?v=19";import {Lighting} from "./rendering/Lighting.js?v=19";import {Effects} from "./rendering/Effects.js?v=19";import {Weather} from "./rendering/Weather.js?v=19";import {AudioManager} from "./audio/AudioManager.js?v=19";import {Inventory,RECIPES,craft} from "./inventory/Inventory.js?v=19";import {HUD} from "./ui/HUD.js?v=19";import {Menu} from "./ui/Menu.js?v=19";import {SaveManager} from "./save/SaveManager.js?v=19";import {BLOCK,INFO,ITEM,ICON} from "./world/Block.js?v=19";import {SurvivalSystems} from "./systems/SurvivalSystems.js?v=19";import {NetworkManager} from "./network/NetworkManager.js?v=19";
+import {CONFIG} from "./config.js?v=21";import {QualityManager} from "./QualityManager.js?v=21";import {World} from "./world/World.js?v=21";import {Player} from "./player/Player.js?v=21";import {Controls} from "./player/Controls.js?v=21";import {MobManager} from "./entities/Mob.js?v=21";import {Particles} from "./rendering/Particles.js?v=21";import {Lighting} from "./rendering/Lighting.js?v=21";import {Effects} from "./rendering/Effects.js?v=21";import {Weather} from "./rendering/Weather.js?v=21";import {AudioManager} from "./audio/AudioManager.js?v=21";import {Inventory,RECIPES,craft} from "./inventory/Inventory.js?v=21";import {HUD} from "./ui/HUD.js?v=21";import {Menu} from "./ui/Menu.js?v=21";import {SaveManager} from "./save/SaveManager.js?v=21";import {BLOCK,INFO,ITEM,ICON} from "./world/Block.js?v=21";import {SurvivalSystems} from "./systems/SurvivalSystems.js?v=21";import {NetworkManager} from "./network/NetworkManager.js?v=21";
 class Game{
  constructor(){const save=SaveManager.load();if(save?.seed)CONFIG.WORLD.SEED=save.seed;this.quality=new QualityManager();CONFIG.QUALITY=this.quality.preset;
   this.scene=new THREE.Scene();this.scene.background=new THREE.Color(0x87c9ef);this.camera=new THREE.PerspectiveCamera(CONFIG.RENDER.FOV,innerWidth/innerHeight,.05,CONFIG.RENDER.FAR);this.renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:this.quality.tier==="low"?"low-power":"high-performance"});this.quality.configureRenderer(this.renderer);if(this.quality.tier==="low")this.renderer.toneMapping=THREE.NoToneMapping;this.renderer.setSize(innerWidth,innerHeight);this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.05;document.getElementById("game").appendChild(this.renderer.domElement);
   this.controls=new Controls(this.camera,this.renderer.domElement);this.world=new World(this.scene,CONFIG);this.world.loadChanges(save?.changes||[]);this.player=new Player(this.camera,this.world,this.controls,CONFIG);this.inventory=new Inventory();this.player.setInventory(this.inventory);if(!save?.inventory){this.inventory.add(ITEM.SEEDS,8);this.inventory.add(ITEM.HOE,1);this.inventory.add(BLOCK.GRASS,32);this.inventory.add(BLOCK.DIRT,64);this.inventory.add(BLOCK.STONE,64);this.inventory.add(BLOCK.LOG,16);this.inventory.add(BLOCK.PLANKS,32);this.inventory.add(BLOCK.SAND,32);this.inventory.add(ITEM.APPLE,3)}
-  this.hud=new HUD(this.player,this.inventory);this.mobs=new MobManager(this.scene,this.world,CONFIG.QUALITY);this.particles=new Particles(this.scene,CONFIG.QUALITY);this.light=null;this.weather=null;this.effects=new Effects(this.renderer);this.audio=new AudioManager();this.menu=new Menu(this);this.systems=new SurvivalSystems(this);this.network=new NetworkManager(this);this.THREE=THREE;this.vec=(x,y,z)=>new THREE.Vector3(x,y,z);this.running=false;this.inventoryOpen=false;this.mode="singleplayer";this.reducedMotion=false;this.installPrompt=null;this.lastFootstep=0;this.breakProgress=0;this.perfFrames=0;this.perfTime=0;this.perfCooldown=0;this.perfStable=0;this.dynamicPixelRatio=this.quality.preset.pixelRatio;this.outline=this.makeOutline();this.time=save?.time||180;this.last=performance.now();this.mobTimer=0;this.saveTimer=0;this.mineTimer=0;this.fallTimer=0;this.smokeTimer=0;const qv=document.getElementById("qualityValue"),qs=document.getElementById("qualitySelect");if(qv)qv.textContent=this.quality.tier.toUpperCase();if(qs)qs.value=this.quality.tier;this.setupInput();this.setupInventory();this.setupInstall();if(save?.inventory)this.inventory.deserialize(save.inventory);if(save?.systems)this.systems.deserialize(save.systems);if(save?.player)this.player.pos.set(save.player.x,save.player.y,save.player.z);addEventListener("resize",()=>this.resize());this.resize();this.setModeBadge();this.loop()}
- async start(){if(this.starting)return;this.starting=true;const boot=document.getElementById("bootSplash"),bar=document.getElementById("bootProgress"),status=document.getElementById("bootStatus");const setBoot=(pct,text)=>{if(bar)bar.style.width=pct+"%";if(status)status.textContent=text};try{await this.requestLandscape();this.mode="singleplayer";this.network.disconnect();this.setModeBadge();this.audio.start();this.menu.hideMain();this.running=false;setBoot(25,"Создаём стартовый участок…");this.world.cfg.WORLD.RENDER_DISTANCE=this.quality.preset.startupDistance;this.world.lastCenter="";const s=this.world.cfg.WORLD.CHUNK_SIZE,cx=Math.floor(this.player.pos.x/s),cz=Math.floor(this.player.pos.z/s);if(!this.world.chunks.has(this.world.key(cx,cz)))await this.world.generateChunk(cx,cz,false);setBoot(65,"Строим первый кадр…");this.world.processMeshQueue(20);await new Promise(requestAnimationFrame);this.world.processMeshQueue(20);const save=SaveManager.load();if(save?.player){this.player.health=save.player.health;this.player.hunger=save.player.hunger}else this.player.pos.y=this.findGround(this.player.pos.x,this.player.pos.z)+.02;this.world.cfg.WORLD.RENDER_DISTANCE=this.quality.preset.renderDistance;this.world.lastCenter="";
-    // Heavy visual systems are optional: they must never prevent the world from starting.
+  this.hud=new HUD(this.player,this.inventory);this.mobs=new MobManager(this.scene,this.world,CONFIG.QUALITY);this.particles=new Particles(this.scene,CONFIG.QUALITY);this.light=null;this.weather=null;this.effects=new Effects(this.renderer);this.audio=new AudioManager();this.menu=new Menu(this);this.systems=new SurvivalSystems(this);this.network=new NetworkManager(this);this.THREE=THREE;this.vec=(x,y,z)=>new THREE.Vector3(x,y,z);this.running=false;this.inventoryOpen=false;this.mode="singleplayer";this.reducedMotion=false;this.installPrompt=null;this.lastFootstep=0;this.breakProgress=0;this.perfFrames=0;this.perfTime=0;this.perfCooldown=0;this.perfStable=0;this.dynamicPixelRatio=this.quality.preset.pixelRatio;this.outline=this.makeOutline();this.time=save?.time||180;this.last=performance.now();this.mobTimer=0;this.saveTimer=0;this.mineTimer=0;this.worldStreamTimer=0;this.fallTimer=0;this.smokeTimer=0;const qv=document.getElementById("qualityValue"),qs=document.getElementById("qualitySelect");if(qv)qv.textContent=this.quality.tier.toUpperCase();if(qs)qs.value=this.quality.tier;this.setupInput();this.setupInventory();this.setupInstall();if(save?.inventory)this.inventory.deserialize(save.inventory);if(save?.systems)this.systems.deserialize(save.systems);if(save?.player)this.player.pos.set(save.player.x,save.player.y,save.player.z);addEventListener("resize",()=>this.resize());this.resize();this.setModeBadge();this.loop()}
+ async start(){
+  if(this.starting)return;
+  this.starting=true;
+  const boot=document.getElementById("bootSplash"),bar=document.getElementById("bootProgress"),status=document.getElementById("bootStatus");
+  const setBoot=(pct,text)=>{if(bar)bar.style.width=pct+"%";if(status)status.textContent=text};
+  try{
+    // iOS Safari can leave Screen Orientation.lock() pending. Never block world startup on it.
+    this.requestLandscape();
+    this.mode="singleplayer";
+    this.network.disconnect();
+    this.setModeBadge();
+    try{this.audio.start()}catch(e){console.warn("Audio disabled",e)}
+    this.menu.hideMain();
+    this.running=false;
+    setBoot(8,"Запускаем мир…");
+    this.world.cfg.WORLD.RENDER_DISTANCE=Math.min(1,this.quality.preset.startupDistance);
+    this.world.lastCenter="";
+    const s=this.world.cfg.WORLD.CHUNK_SIZE;
+    const cx=Math.floor(this.player.pos.x/s),cz=Math.floor(this.player.pos.z/s);
+    setBoot(20,"Создаём стартовый участок…");
+    if(!this.world.chunks.has(this.world.key(cx,cz))){
+      // Always generate the first chunk on the main thread: this avoids a Safari Worker stall.
+      this.world.generateChunk(cx,cz,false);
+    }
+    setBoot(48,"Строим первый участок…");
+    // Build only the first queued chunk before entering gameplay.
+    this.world.processMeshQueue(40);
+    setBoot(70,"Настраиваем персонажа…");
+    const save=SaveManager.load();
+    if(save?.player){
+      this.player.health=save.player.health;
+      this.player.hunger=save.player.hunger;
+    }else{
+      this.player.pos.y=this.findGround(this.player.pos.x,this.player.pos.z)+.02;
+    }
+    this.camera.position.set(this.player.pos.x,this.player.pos.y+1.62,this.player.pos.z);
+    this.world.cfg.WORLD.RENDER_DISTANCE=this.quality.preset.renderDistance;
+    this.world.lastCenter="";
+    // Lighting/weather are optional and never allowed to block startup.
     try{this.light=new Lighting(this.scene,this.world,CONFIG)}catch(e){console.warn("Lighting disabled",e);this.light=null}
     try{this.weather=new Weather(this.scene,CONFIG.QUALITY)}catch(e){console.warn("Weather disabled",e);this.weather=null}
-    this.world.generateAround(this.player.pos.x,this.player.pos.z);setBoot(100,"Мир готов");this.running=true;this.renderer.domElement.requestPointerLock?.()}catch(err){console.error(err);this.menu.showMain();if(status)status.textContent="Не удалось загрузить мир"}finally{this.starting=false}}
-
+    setBoot(88,"Загружаем окружение…");
+    this.running=true;
+    setBoot(100,"Мир готов");
+    requestAnimationFrame(()=>this.world.generateAround(this.player.pos.x,this.player.pos.z));
+    this.renderer.domElement.requestPointerLock?.();
+  }catch(err){
+    console.error("WORLD START FAILED",err);
+    this.running=false;
+    this.menu.showMain();
+    if(status)status.textContent="Ошибка мира: "+(err?.message||String(err));
+    const retry=document.getElementById("engineRetry");
+    if(retry)retry.classList.remove("hidden");
+  }finally{
+    this.starting=false;
+  }
+ }
  findGround(x,z){for(let y=CONFIG.WORLD.HEIGHT-1;y>=0;y--)if(INFO[this.world.getBlock(Math.floor(x),y,Math.floor(z))]?.solid)return y+1;return 70}
  newWorld(){this.network.disconnect();SaveManager.clear();location.reload()}
  hostLAN(){this.save();const u=`${location.protocol==="https:"?"wss":"ws"}://${location.host}/ws`;this.mode="lan-host";this.setModeBadge();this.menu.hideMain();this.network.connect(u,true);this.network.chatLine("★ Локальная игра открыта для друзей");this.network.syncHostWorld();this.running=true;this.renderer.domElement.requestPointerLock?.()}
