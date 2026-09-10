@@ -1,10 +1,10 @@
 import * as THREE from "https://unpkg.com/three@0.179.1/build/three.module.js";
-import {Chunk} from "./Chunk.js?v=22";
-import {Generator} from "./Generator.js?v=22";
-import {BLOCK,INFO} from "./Block.js?v=22";
+import {Chunk} from "./Chunk.js?v=24";
+import {Generator} from "./Generator.js?v=24";
+import {BLOCK,INFO} from "./Block.js?v=24";
 
 /*
- * Voxel Survival Universe 22
+ * Voxel Survival Universe 24
  * Performance pass:
  * - one draw group per block/material instead of one group per visible face;
  * - deterministic 64x64 nearest-neighbour textures generated once and cached;
@@ -19,62 +19,54 @@ export class World{
     this.materials=this.makeMaterials();this.workers=[];this.workerSeq=0;this.workerJobs=new Map();this.workerCursor=0;
     this.meshQueue=[];this.meshQueued=new Set();this.meshBuilding=false;this.initWorker();
   }
-  initWorker(){try{const cores=navigator.hardwareConcurrency||2;const count=Math.max(1,Math.min(2,cores>4?2:1));for(let i=0;i<count;i++){const w=new Worker(new URL("./WorldWorker.js?v=22",import.meta.url),{type:"module"});w.onmessage=e=>{const job=this.workerJobs.get(e.data.id);if(!job)return;this.workerJobs.delete(e.data.id);if(e.data.error)job.reject(new Error(e.data.error));else job.resolve(new Uint8Array(e.data.buffer));};w.onerror=e=>{console.warn("World worker:",e.message);for(const [id,job] of this.workerJobs){job.reject(new Error("Worker failed"));this.workerJobs.delete(id)}};this.workers.push(w)}}catch(e){this.workers=[]}}
+  initWorker(){try{const cores=navigator.hardwareConcurrency||2;const count=Math.max(1,Math.min(2,cores>4?2:1));for(let i=0;i<count;i++){const w=new Worker(new URL("./WorldWorker.js?v=24",import.meta.url),{type:"module"});w.onmessage=e=>{const job=this.workerJobs.get(e.data.id);if(!job)return;this.workerJobs.delete(e.data.id);if(e.data.error)job.reject(new Error(e.data.error));else job.resolve(new Uint8Array(e.data.buffer));};w.onerror=e=>{console.warn("World worker:",e.message);for(const [id,job] of this.workerJobs){job.reject(new Error("Worker failed"));this.workerJobs.delete(id)}};this.workers.push(w)}}catch(e){this.workers=[]}}
   key(x,z){return `${x},${z}`}
 
-  // Safe 64x64 voxel texture generator using DataTexture (no Canvas dependency).
+  // High-detail 64x64 pixel texture. Nearest filtering keeps the voxel look sharp.
   makeTexture(base,accent,seed=1,mode="normal"){
-    const k=`${base}|${accent}|${seed}|${mode}`;
-    if(this._textureCache.has(k)) return this._textureCache.get(k);
-    const hex=h=>{const n=parseInt(String(h).replace("#",""),16);return[(n>>16)&255,(n>>8)&255,n&255]};
-    const B=hex(base),A=hex(accent),data=new Uint8Array(64*64*4);
-    let s=(seed>>>0)||1;
+    const k=`${base}|${accent}|${seed}|${mode}`;if(this._textureCache.has(k))return this._textureCache.get(k);
+    const c=document.createElement("canvas");c.width=c.height=64;const g=c.getContext("2d",{alpha:true});
+    g.fillStyle=base;g.fillRect(0,0,64,64);let s=seed>>>0;
     const rnd=()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296};
-    const clamp=v=>Math.max(0,Math.min(255,v|0));
-    const mix=(a,b,t)=>clamp(a+(b-a)*t);
-    const pixel=(x,y,c,a=255)=>{if(x<0||x>=64||y<0||y>=64)return;const i=(y*64+x)*4;data[i]=c[0];data[i+1]=c[1];data[i+2]=c[2];data[i+3]=a};
-    const fill=(c,a=255)=>{for(let y=0;y<64;y++)for(let x=0;x<64;x++)pixel(x,y,c,a)};
-    fill(B);
-    // Dense but restrained 1px/2px pixel noise, generated once and cached.
-    for(let i=0;i<520;i++){
-      const t=(rnd()-.5)*.34, c=[mix(B[0],t<0?0:255,Math.abs(t)),mix(B[1],t<0?0:255,Math.abs(t)),mix(B[2],t<0?0:255)];
-      const x=(rnd()*64)|0,y=(rnd()*64)|0,sz=rnd()<.9?1:2;
-      for(let yy=0;yy<sz;yy++)for(let xx=0;xx<sz;xx++)pixel(x+xx,y+yy,c,80+(rnd()*110|0));
+    const rgb=(hex)=>{const n=parseInt(hex.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255]};
+    const [ar,ag,ab]=rgb(accent);
+    // Pixel-scale noise: varied but restrained so blocks remain readable.
+    for(let i=0;i<420;i++){
+      const a=.045+rnd()*.15,sz=rnd()<.84?1:2;
+      g.fillStyle=`rgba(${ar},${ag},${ab},${a})`;
+      g.fillRect((rnd()*64)|0,(rnd()*64)|0,sz,sz);
+    }
+    // Fine light/dark chips.
+    for(let i=0;i<95;i++){
+      const light=rnd()>.5, a=.035+rnd()*.08;
+      g.fillStyle=light?`rgba(255,255,255,${a})`:`rgba(0,0,0,${a})`;
+      g.fillRect((rnd()*64)|0,(rnd()*64)|0,1+(rnd()*2|0),1+(rnd()*2|0));
     }
     if(mode==="grassTop"){
-      for(let i=0;i<150;i++){const x=(rnd()*64)|0,y=(rnd()*64)|0,c=rnd()<.7?[63,126,43]:[126,174,69];pixel(x,y,c,150+(rnd()*90|0));if(rnd()<.18)pixel(x,y+1,c,120)}
-      for(let i=0;i<35;i++)pixel((rnd()*64)|0,(rnd()*64)|0,[28,72,25],150);
-    } else if(mode==="grassSide"){
-      for(let y=0;y<8;y++)for(let x=0;x<64;x++)pixel(x,y,[88+(rnd()*45|0),150+(rnd()*45|0),52+(rnd()*25|0)],255);
-      for(let i=0;i<120;i++)pixel((rnd()*64)|0,(rnd()*56+8)|0,[70+(rnd()*45|0),45+(rnd()*30|0),25+(rnd()*18|0)],100+(rnd()*100|0));
-      for(let i=0;i<28;i++)pixel((rnd()*64)|0,(rnd()*10)|0,[38,92,28],190);
-    } else if(mode==="dirt"){
-      for(let i=0;i<100;i++)pixel((rnd()*64)|0,(rnd()*64)|0,rnd()<.5?[91,57,31]:[139,91,49],90+(rnd()*90|0));
-    } else if(mode==="stone"){
-      for(let i=0;i<55;i++){const x=(rnd()*62)|0,y=(rnd()*62)|0,w=2+(rnd()*4|0);for(let xx=0;xx<w;xx++)pixel(x+xx,y,rnd()<.5?[92,92,92]:[145,145,145],100+(rnd()*70|0));}
-      for(let i=0;i<18;i++)pixel((rnd()*64)|0,(rnd()*64)|0,[55,55,55],130);
-    } else if(mode==="cobble"){
-      for(let i=0;i<38;i++){const x=(rnd()*60)|0,y=(rnd()*60)|0,w=3+(rnd()*6|0),h=3+(rnd()*5|0);for(let yy=0;yy<h;yy++)for(let xx=0;xx<w;xx++)if(xx===0||yy===0)pixel(x+xx,y+yy,[45,45,45],160);}
-    } else if(mode==="sand"){
-      for(let i=0;i<120;i++)pixel((rnd()*64)|0,(rnd()*64)|0,rnd()<.5?[193,168,99]:[232,211,135],90+(rnd()*100|0));
-    } else if(mode==="woodTop"){
-      for(let r=5;r<32;r+=7){for(let x=32-r;x<=32+r;x++){pixel(x,32-r,[106,65,32],220);pixel(x,32+r,[106,65,32],220)}for(let y=32-r;y<=32+r;y++){pixel(32-r,y,[106,65,32],220);pixel(32+r,y,[106,65,32],220)}}
-      for(let i=0;i<28;i++)pixel((rnd()*64)|0,(rnd()*64)|0,[188,132,73],130);
-    } else if(mode==="woodSide"){
-      for(let x=4;x<64;x+=10){for(let y=0;y<64;y++)pixel(x,y,[62,38,22],190);for(let y=0;y<64;y++)if(x+2<64)pixel(x+2,y,[177,119,64],90)}
-      for(let i=0;i<50;i++)pixel((rnd()*64)|0,(rnd()*64)|0,rnd()<.5?[92,57,29]:[190,130,70],110);
-    } else if(mode==="ore"){
-      for(let i=0;i<28;i++)pixel((rnd()*64)|0,(rnd()*64)|0,[32,32,32],180);
-      for(let i=0;i<20;i++){const x=(rnd()*62)|0,y=(rnd()*62)|0;pixel(x,y,A,255);if(rnd()<.4)pixel(x+1,y,A,255);}
-    } else if(mode==="brick"){
-      for(let y=7;y<64;y+=16)for(let x=0;x<64;x++)pixel(x,y,[89,44,38],220);
-      for(let row=0;row<4;row++){const off=(row&1)*8;for(let x=off;x<64;x+=16)for(let y=row*16;y<Math.min(64,row*16+16);y++)pixel(x,y,[89,44,38],220);}
-    } else if(mode==="planks"){
-      for(let y=7;y<64;y+=10)for(let x=0;x<64;x++)pixel(x,y,[96,60,31],180);
-      for(let i=0;i<40;i++)pixel((rnd()*64)|0,(rnd()*64)|0,[204,145,82],120);
+      g.fillStyle="#477f2f";for(let i=0;i<78;i++){const x=(rnd()*64)|0,y=(rnd()*64)|0;g.fillRect(x,y,1,2+(rnd()*4|0));}
+      g.fillStyle="#8fbd52";for(let i=0;i<30;i++)g.fillRect((rnd()*64)|0,(rnd()*64)|0,1,1);
     }
-    const t=new THREE.DataTexture(data,64,64,THREE.RGBAFormat,THREE.UnsignedByteType);
-    t.magFilter=THREE.NearestFilter;t.minFilter=THREE.NearestFilter;t.generateMipmaps=false;t.colorSpace=THREE.SRGBColorSpace;t.needsUpdate=true;
+    if(mode==="stone"){
+      g.fillStyle="#c6c6c6";g.globalAlpha=.22;for(let i=0;i<42;i++)g.fillRect((rnd()*64)|0,(rnd()*64)|0,1+(rnd()*2|0),1+(rnd()*2|0));g.globalAlpha=1;
+      g.strokeStyle="#555";g.globalAlpha=.18;g.lineWidth=1;for(let i=0;i<12;i++){const x=(rnd()*60)|0,y=(rnd()*60)|0;g.beginPath();g.moveTo(x,y);g.lineTo(x+2+(rnd()*4|0),y+1);g.lineTo(x+3+(rnd()*3|0),y+3);g.stroke();}g.globalAlpha=1;
+    }
+    if(mode==="woodTop"){
+      g.strokeStyle="#3d2618";g.lineWidth=2;for(let r=7;r<32;r+=7)g.strokeRect(32-r,32-r,r*2,r*2);
+      g.fillStyle="#c28a4e";for(let i=0;i<18;i++)g.fillRect((rnd()*64)|0,(rnd()*64)|0,1,1);
+    }
+    if(mode==="ore"){
+      g.fillStyle="#252525";for(let i=0;i<22;i++)g.fillRect((rnd()*64)|0,(rnd()*64)|0,2+(rnd()*2|0),2+(rnd()*2|0));
+      g.fillStyle=accent;for(let i=0;i<20;i++)g.fillRect((rnd()*62)|0,(rnd()*62)|0,2,2);
+    }
+    if(mode==="brick"){
+      g.strokeStyle="#572722";g.lineWidth=2;for(let y=8;y<64;y+=16){g.beginPath();g.moveTo(0,y);g.lineTo(64,y);g.stroke();}
+      for(let y=0;y<64;y+=16){const off=((y/16)&1)*8;for(let x=off;x<64;x+=16){g.beginPath();g.moveTo(x,y);g.lineTo(x,y+16);g.stroke();}}
+    }
+    if(mode==="planks"){
+      g.strokeStyle="#694322";g.globalAlpha=.5;for(let y=6;y<64;y+=10){g.beginPath();g.moveTo(0,y);g.lineTo(64,y);g.stroke();}g.globalAlpha=1;
+      g.fillStyle="#d19a5b";for(let i=0;i<18;i++)g.fillRect((rnd()*58)|0,(rnd()*64)|0,4,1);
+    }
+    const t=new THREE.CanvasTexture(c);t.magFilter=THREE.NearestFilter;t.minFilter=THREE.NearestFilter;t.generateMipmaps=false;t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=1;
     this._textureCache.set(k,t);return t;
   }
   mat(a,b,s,e={},m="normal"){return new THREE.MeshLambertMaterial({map:this.makeTexture(a,b,s,m),...e})}

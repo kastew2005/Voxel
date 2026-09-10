@@ -1,6 +1,6 @@
 import * as THREE from "https://unpkg.com/three@0.179.1/build/three.module.js";
-import {Entity} from "./Entity.js?v=22";
-import {INFO} from "../world/Block.js?v=22";
+import {Entity} from "./Entity.js?v=24";
+import {INFO} from "../world/Block.js?v=24";
 export class Zombie extends Entity{
  constructor(scene,world,x,y,z){super(x,y,z);this.world=world;this.speed=1.25;this.health=20;this.attackTimer=0;this.vel.y=0;this.group=new THREE.Group();
   const skin=new THREE.MeshLambertMaterial({color:0x68a66a}),shirt=new THREE.MeshLambertMaterial({color:0x315b8c}),pants=new THREE.MeshLambertMaterial({color:0x333a64}),eye=new THREE.MeshBasicMaterial({color:0xff3333});

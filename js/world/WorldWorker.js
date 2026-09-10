@@ -1,4 +1,4 @@
-import {Generator} from './Generator.js?v=22';
+import {Generator} from './Generator.js?v=24';
 
 self.onmessage = (e) => {
   const {id, seed, cx, cz, size, height, seaLevel} = e.data;

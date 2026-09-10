@@ -1,5 +1,5 @@
-import {Zombie} from "./Zombie.js?v=22";
-import {INFO} from "../world/Block.js?v=22";
+import {Zombie} from "./Zombie.js?v=24";
+import {INFO} from "../world/Block.js?v=24";
 export class MobManager{
  constructor(scene,world,quality={}){this.scene=scene;this.world=world;this.mobs=[];this.max=quality.maxMobs||20}
  spawn(x,y,z){if(this.mobs.length>=this.max)return null;const m=new Zombie(this.scene,this.world,x,y,z);this.mobs.push(m);return m}

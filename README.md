@@ -1,3 +1,5 @@
-# Voxel Survival Universe 22
+# Voxel Survival Universe 24
 
-Stable startup build. Based on Universe 20, with safe 64x64 DataTexture voxel textures (no CanvasTexture dependency), preserved Play fix, and mobile-safe startup. Upload the contents of this folder to the GitHub Pages root.
+Optimized mobile build. Universe 24 fixes the Play/startup path: iOS Safari orientation locking can no longer block startup, the first chunk is generated locally, audio failures are non-fatal, and worker generation has a timeout fallback.
+
+Upload the contents of this folder to the GitHub Pages root.

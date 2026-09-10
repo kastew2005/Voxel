@@ -1,5 +1,5 @@
 import * as THREE from "https://unpkg.com/three@0.179.1/build/three.module.js";
-import {CONFIG} from "./config.js?v=22";import {QualityManager} from "./QualityManager.js?v=22";import {World} from "./world/World.js?v=22";import {Player} from "./player/Player.js?v=22";import {Controls} from "./player/Controls.js?v=22";import {MobManager} from "./entities/Mob.js?v=22";import {Particles} from "./rendering/Particles.js?v=22";import {Lighting} from "./rendering/Lighting.js?v=22";import {Effects} from "./rendering/Effects.js?v=22";import {Weather} from "./rendering/Weather.js?v=22";import {AudioManager} from "./audio/AudioManager.js?v=22";import {Inventory,RECIPES,craft} from "./inventory/Inventory.js?v=22";import {HUD} from "./ui/HUD.js?v=22";import {Menu} from "./ui/Menu.js?v=22";import {SaveManager} from "./save/SaveManager.js?v=22";import {BLOCK,INFO,ITEM,ICON} from "./world/Block.js?v=22";import {SurvivalSystems} from "./systems/SurvivalSystems.js?v=22";import {NetworkManager} from "./network/NetworkManager.js?v=22";
+import {CONFIG} from "./config.js?v=24";import {QualityManager} from "./QualityManager.js?v=24";import {World} from "./world/World.js?v=24";import {Player} from "./player/Player.js?v=24";import {Controls} from "./player/Controls.js?v=24";import {MobManager} from "./entities/Mob.js?v=24";import {Particles} from "./rendering/Particles.js?v=24";import {Lighting} from "./rendering/Lighting.js?v=24";import {Effects} from "./rendering/Effects.js?v=24";import {Weather} from "./rendering/Weather.js?v=24";import {AudioManager} from "./audio/AudioManager.js?v=24";import {Inventory,RECIPES,craft} from "./inventory/Inventory.js?v=24";import {HUD} from "./ui/HUD.js?v=24";import {Menu} from "./ui/Menu.js?v=24";import {SaveManager} from "./save/SaveManager.js?v=24";import {BLOCK,INFO,ITEM,ICON} from "./world/Block.js?v=24";import {SurvivalSystems} from "./systems/SurvivalSystems.js?v=24";import {NetworkManager} from "./network/NetworkManager.js?v=24";
 class Game{
  constructor(){const save=SaveManager.load();if(save?.seed)CONFIG.WORLD.SEED=save.seed;this.quality=new QualityManager();CONFIG.QUALITY=this.quality.preset;
   this.scene=new THREE.Scene();this.scene.background=new THREE.Color(0x87c9ef);this.camera=new THREE.PerspectiveCamera(CONFIG.RENDER.FOV,innerWidth/innerHeight,.05,CONFIG.RENDER.FAR);this.renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:this.quality.tier==="low"?"low-power":"high-performance"});this.quality.configureRenderer(this.renderer);if(this.quality.tier==="low")this.renderer.toneMapping=THREE.NoToneMapping;this.renderer.setSize(innerWidth,innerHeight);this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.05;document.getElementById("game").appendChild(this.renderer.domElement);
@@ -31,8 +31,7 @@ class Game{
     }
     setBoot(48,"Строим первый участок…");
     // Build only the first queued chunk before entering gameplay.
-    this.world.processMeshQueue(24);
-    if(!this.world.meshes.has(this.world.key(cx,cz))) this.world.processMeshQueue(80);
+    this.world.processMeshQueue(18);
     setBoot(70,"Настраиваем персонажа…");
     const save=SaveManager.load();
     if(save?.player){
@@ -44,13 +43,17 @@ class Game{
     this.camera.position.set(this.player.pos.x,this.player.pos.y+1.62,this.player.pos.z);
     this.world.cfg.WORLD.RENDER_DISTANCE=this.quality.preset.renderDistance;
     this.world.lastCenter="";
-    // Lighting/weather are optional and never allowed to block startup.
-    try{this.light=new Lighting(this.scene,this.world,CONFIG)}catch(e){console.warn("Lighting disabled",e);this.light=null}
-    try{this.weather=new Weather(this.scene,CONFIG.QUALITY)}catch(e){console.warn("Weather disabled",e);this.weather=null}
-    setBoot(88,"Загружаем окружение…");
+    // The first playable frame must not depend on optional systems or workers.
+    setBoot(88,"Запускаем игровой кадр…");
     this.running=true;
     setBoot(100,"Мир готов");
-    requestAnimationFrame(()=>this.world.generateAround(this.player.pos.x,this.player.pos.z));
+    // Initialize heavy optional systems after the first visible frame.
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      try{this.light=new Lighting(this.scene,this.world,CONFIG)}catch(e){console.warn("Lighting disabled",e);this.light=null}
+      try{this.weather=new Weather(this.scene,CONFIG.QUALITY)}catch(e){console.warn("Weather disabled",e);this.weather=null}
+      // Expand the world only after gameplay is already responsive.
+      requestAnimationFrame(()=>this.world.generateAround(this.player.pos.x,this.player.pos.z));
+    }));
     if(!matchMedia("(pointer:coarse)").matches) this.renderer.domElement.requestPointerLock?.();
   }catch(err){
     console.error("WORLD START FAILED",err);
