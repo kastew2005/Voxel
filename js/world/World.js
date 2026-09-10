@@ -1,7 +1,7 @@
 import * as THREE from "https://unpkg.com/three@0.179.1/build/three.module.js";
-import {Chunk} from "./Chunk.js?v=16";
-import {Generator} from "./Generator.js?v=16";
-import {BLOCK,INFO} from "./Block.js?v=16";
+import {Chunk} from "./Chunk.js?v=18";
+import {Generator} from "./Generator.js?v=18";
+import {BLOCK,INFO} from "./Block.js?v=18";
 
 export class World{
   constructor(scene,cfg){
@@ -11,7 +11,7 @@ export class World{
     this.materials=this.makeMaterials();this.workers=[];this.workerSeq=0;this.workerJobs=new Map();this.workerCursor=0;
     this.meshQueue=[];this.meshQueued=new Set();this.meshBuilding=false;this.initWorker();
   }
-  initWorker(){try{const cores=navigator.hardwareConcurrency||2;const count=Math.max(1,Math.min(2,cores>4?2:1));for(let i=0;i<count;i++){const w=new Worker(new URL("./WorldWorker.js?v=16",import.meta.url),{type:"module"});w.onmessage=e=>{const job=this.workerJobs.get(e.data.id);if(!job)return;this.workerJobs.delete(e.data.id);if(e.data.error)job.reject(new Error(e.data.error));else job.resolve(new Uint8Array(e.data.buffer));};w.onerror=e=>{console.warn("World worker:",e.message);for(const [id,job] of this.workerJobs){job.reject(new Error("Worker failed"));this.workerJobs.delete(id)}};this.workers.push(w)}}catch(e){this.workers=[]}}
+  initWorker(){try{const cores=navigator.hardwareConcurrency||2;const count=Math.max(1,Math.min(2,cores>4?2:1));for(let i=0;i<count;i++){const w=new Worker(new URL("./WorldWorker.js?v=18",import.meta.url),{type:"module"});w.onmessage=e=>{const job=this.workerJobs.get(e.data.id);if(!job)return;this.workerJobs.delete(e.data.id);if(e.data.error)job.reject(new Error(e.data.error));else job.resolve(new Uint8Array(e.data.buffer));};w.onerror=e=>{console.warn("World worker:",e.message);for(const [id,job] of this.workerJobs){job.reject(new Error("Worker failed"));this.workerJobs.delete(id)}};this.workers.push(w)}}catch(e){this.workers=[]}}
   key(x,z){return `${x},${z}`}
   makeTexture(base,accent,seed=1,mode="normal"){
     const k=`${base}|${accent}|${seed}|${mode}`;if(this._textureCache.has(k))return this._textureCache.get(k);

@@ -1,5 +1,5 @@
 import * as THREE from "https://unpkg.com/three@0.179.1/build/three.module.js";
-import {INFO} from "../world/Block.js?v=16";
+import {INFO} from "../world/Block.js?v=18";
 export class Lighting{
  constructor(scene,world,cfg){
   this.scene=scene;this.world=world;this.cfg=cfg;this.sun=new THREE.DirectionalLight(0xfff1d0,1.5);this.moon=new THREE.DirectionalLight(0x8ab8ff,.2);this.hemi=new THREE.HemisphereLight(0xbfe8ff,0x25301d,1);this.scene.add(this.sun,this.moon,this.hemi);
