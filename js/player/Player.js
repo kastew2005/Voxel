@@ -1,0 +1,13 @@
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js";
+import {BLOCK,INFO} from "../world/Block.js?v=15";
+export class Player{
+ constructor(camera,world,controls,cfg){this.camera=camera;this.world=world;this.controls=controls;this.cfg=cfg;this.pos=new THREE.Vector3(0,70,0);this.vel=new THREE.Vector3();this.onGround=false;this.health=20;this.hunger=20;this.inventory=null;this.walkTime=0;this.sprint=false}
+ setInventory(inv){this.inventory=inv}
+ solid(x,y,z){return !!INFO[this.world.getBlock(Math.floor(x),Math.floor(y),Math.floor(z))]?.solid}
+ collides(p){const r=.29,h=1.78;for(let x=Math.floor(p.x-r);x<=Math.floor(p.x+r);x++)for(let y=Math.floor(p.y+.02);y<=Math.floor(p.y+h);y++)for(let z=Math.floor(p.z-r);z<=Math.floor(p.z+r);z++)if(this.solid(x,y,z))return true;return false}
+ move(dt){const c=this.controls,k=c.keys,sp=k.ShiftLeft?this.cfg.PLAYER.SPRINT_SPEED:this.cfg.PLAYER.WALK_SPEED;let dx=0,dz=0,f=c.forward(),r=c.right();if(k.KeyW){dx+=f.x;dz+=f.z}if(k.KeyS){dx-=f.x;dz-=f.z}if(k.KeyD){dx+=r.x;dz+=r.z}if(k.KeyA){dx-=r.x;dz-=r.z}const len=Math.hypot(dx,dz)||1;const moving=dx||dz;dx=dx/len*sp*dt;dz=dz/len*sp*dt;this.tryMove(dx,0,0);this.tryMove(0,0,dz);if(moving)this.walkTime+=dt*(k.ShiftLeft?12:8);this.vel.y-=this.cfg.PLAYER.GRAVITY*dt;if(k.Space&&this.onGround){this.vel.y=this.cfg.PLAYER.JUMP;this.onGround=false;k.Space=false}const before=this.pos.y;this.tryMove(0,this.vel.y*dt,0,true);if(this.pos.y===before&&this.vel.y<0)this.onGround=true;this.camera.position.set(this.pos.x,this.pos.y+1.62+(moving&&this.onGround?Math.sin(this.walkTime)*.025:0),this.pos.z);this.sprint=!!(moving&&k.ShiftLeft);this.hunger=Math.max(0,this.hunger-dt*.0025);if(this.hunger<=0)this.health=Math.max(0,this.health-dt*.4)}
+ tryMove(dx,dy,dz,vertical=false){const p=this.pos.clone();p.x+=dx;p.y+=dy;p.z+=dz;if(!this.collides(p)){this.pos.copy(p);return true}if(vertical)this.vel.y=0;return false}
+ raycast(max=7){const o=this.camera.position.clone(),d=new THREE.Vector3();this.camera.getWorldDirection(d);let prev=null;for(let t=0;t<max;t+=.045){const p=o.clone().addScaledVector(d,t),b={x:Math.floor(p.x),y:Math.floor(p.y),z:Math.floor(p.z)},id=this.world.getBlock(b.x,b.y,b.z);if(id&&id!==BLOCK.WATER)return{block:b,id,previous:prev};prev=b}return null}
+ damage(n){this.health=Math.max(0,this.health-n)}
+ eat(){const s=this.inventory?.selectedItem?.();if(!s||!INFO[s.id]?.food)return false;if(!this.inventory.remove(s.id,1))return false;this.hunger=Math.min(20,this.hunger+INFO[s.id].food);return true}
+}

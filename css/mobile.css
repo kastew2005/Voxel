@@ -1,0 +1,19 @@
+#mobileControls{display:none}@media(pointer:coarse){#mobileControls{display:block;position:fixed;inset:0;z-index:30;pointer-events:none}#joystick{position:absolute;left:22px;bottom:25px;width:125px;height:125px;border-radius:50%;background:#ffffff14;border:2px solid #fff4;pointer-events:auto;touch-action:none}#joystickKnob{position:absolute;left:37px;top:37px;width:47px;height:47px;border-radius:50%;background:#ffffff55}.mobileActions{position:absolute;right:18px;bottom:24px;display:grid;grid-template-columns:70px 70px;gap:10px;pointer-events:auto}.mobileActions button{width:70px;height:70px;border-radius:50%;background:#222a;color:#fff;border:2px solid #fff4;font-size:25px}.mobileActions button:active{background:#777a}#hotbar{bottom:155px;transform:translateX(-50%) scale(.82);transform-origin:center bottom}}@media(pointer:coarse){.mobileActions{grid-template-columns:70px 70px 70px}.mobileActions button:last-child{grid-column:3}.inventoryWindow{width:96vw;padding:14px}.inventoryGrid{gap:3px}.invSlot{font-size:18px}#selectedItem{bottom:210px}}@supports(padding:max(0px)){#joystick{bottom:max(25px,env(safe-area-inset-bottom));left:max(22px,env(safe-area-inset-left))}.mobileActions{bottom:max(24px,env(safe-area-inset-bottom));right:max(18px,env(safe-area-inset-right))}}
+
+
+/* Wide mobile HUD */
+@media (pointer:coarse) and (orientation:landscape){
+  #joystick{left:max(20px,env(safe-area-inset-left));bottom:max(16px,env(safe-area-inset-bottom));width:112px;height:112px}
+  #joystickKnob{left:33px;top:33px;width:46px;height:46px}
+  .mobileActions{right:max(18px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));grid-template-columns:64px 64px 64px 64px;gap:8px}
+  .mobileActions button{width:64px;height:64px;font-size:22px}
+  .mobileActions button:last-child{grid-column:auto}
+  #hotbar{bottom:14px;left:50%;transform:translateX(-50%) scale(.72);transform-origin:center bottom}
+  #hintBar{display:none}
+  #selectedItem{bottom:82px}
+}
+@media (pointer:coarse) and (orientation:landscape) and (max-height:500px){
+  #status{top:8px;left:8px}
+  #onlineHud{top:8px;right:8px}
+  #targetInfo{top:44px}
+}

@@ -1,0 +1,16 @@
+{
+  "name":"Voxel Survival — Frontier",
+  "short_name":"Voxel Survival",
+  "description":"Оригинальная voxel-песочница о выживании, исследовании и строительстве.",
+  "start_url":"./",
+  "scope":"./",
+  "display":"fullscreen",
+  "display_override":["window-controls-overlay","standalone"],
+  "orientation":"landscape",
+  "background_color":"#070908",
+  "theme_color":"#111512",
+  "icons":[
+    {"src":"./assets/icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+    {"src":"./assets/icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ]
+}
