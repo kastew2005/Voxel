@@ -1,10 +1,10 @@
 import * as THREE from "https://unpkg.com/three@0.179.1/build/three.module.js";
-import {Chunk} from "./Chunk.js?v=21";
-import {Generator} from "./Generator.js?v=21";
-import {BLOCK,INFO} from "./Block.js?v=21";
+import {Chunk} from "./Chunk.js?v=22";
+import {Generator} from "./Generator.js?v=22";
+import {BLOCK,INFO} from "./Block.js?v=22";
 
 /*
- * Voxel Survival Universe 21
+ * Voxel Survival Universe 22
  * Performance pass:
  * - one draw group per block/material instead of one group per visible face;
  * - deterministic 64x64 nearest-neighbour textures generated once and cached;
@@ -19,119 +19,69 @@ export class World{
     this.materials=this.makeMaterials();this.workers=[];this.workerSeq=0;this.workerJobs=new Map();this.workerCursor=0;
     this.meshQueue=[];this.meshQueued=new Set();this.meshBuilding=false;this.initWorker();
   }
-  initWorker(){try{const cores=navigator.hardwareConcurrency||2;const count=Math.max(1,Math.min(2,cores>4?2:1));for(let i=0;i<count;i++){const w=new Worker(new URL("./WorldWorker.js?v=21",import.meta.url),{type:"module"});w.onmessage=e=>{const job=this.workerJobs.get(e.data.id);if(!job)return;this.workerJobs.delete(e.data.id);if(e.data.error)job.reject(new Error(e.data.error));else job.resolve(new Uint8Array(e.data.buffer));};w.onerror=e=>{console.warn("World worker:",e.message);for(const [id,job] of this.workerJobs){job.reject(new Error("Worker failed"));this.workerJobs.delete(id)}};this.workers.push(w)}}catch(e){this.workers=[]}}
+  initWorker(){try{const cores=navigator.hardwareConcurrency||2;const count=Math.max(1,Math.min(2,cores>4?2:1));for(let i=0;i<count;i++){const w=new Worker(new URL("./WorldWorker.js?v=22",import.meta.url),{type:"module"});w.onmessage=e=>{const job=this.workerJobs.get(e.data.id);if(!job)return;this.workerJobs.delete(e.data.id);if(e.data.error)job.reject(new Error(e.data.error));else job.resolve(new Uint8Array(e.data.buffer));};w.onerror=e=>{console.warn("World worker:",e.message);for(const [id,job] of this.workerJobs){job.reject(new Error("Worker failed"));this.workerJobs.delete(id)}};this.workers.push(w)}}catch(e){this.workers=[]}}
   key(x,z){return `${x},${z}`}
 
-  // Original 64x64 voxel textures with a classic Minecraft-like pixel language:
-  // crisp nearest-neighbour pixels, restrained palettes, layered noise and face-specific detail.
+  // Safe 64x64 voxel texture generator using DataTexture (no Canvas dependency).
   makeTexture(base,accent,seed=1,mode="normal"){
     const k=`${base}|${accent}|${seed}|${mode}`;
     if(this._textureCache.has(k)) return this._textureCache.get(k);
-    const c=document.createElement("canvas");c.width=c.height=64;
-    const g=c.getContext("2d",{alpha:true});
+    const hex=h=>{const n=parseInt(String(h).replace("#",""),16);return[(n>>16)&255,(n>>8)&255,n&255]};
+    const B=hex(base),A=hex(accent),data=new Uint8Array(64*64*4);
     let s=(seed>>>0)||1;
     const rnd=()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296};
-    const hex=h=>{const n=parseInt(h.replace("#",""),16);return[(n>>16)&255,(n>>8)&255,n&255]};
-    const mix=(a,b,t)=>Math.round(a+(b-a)*t);
-    const B=hex(base),A=hex(accent);
-    const col=(c,a=1)=>`rgba(${c[0]},${c[1]},${c[2]},${a})`;
-    const shade=(c,t)=>[mix(c[0],t<0?0:255,Math.abs(t)),mix(c[1],t<0?0:255,Math.abs(t)),mix(c[2],t<0?0:255,Math.abs(t))];
-    g.imageSmoothingEnabled=false;
-    g.fillStyle=base;g.fillRect(0,0,64,64);
-
-    // Base pixel grain: mostly 1–2 px marks, like hand-authored voxel textures.
-    for(let i=0;i<430;i++){
-      const t=(rnd()-.5)*.30, c=shade(B,t), size=rnd()<.9?1:2;
-      g.fillStyle=col(c,.28+rnd()*.42);
-      g.fillRect((rnd()*64)|0,(rnd()*64)|0,size,size);
+    const clamp=v=>Math.max(0,Math.min(255,v|0));
+    const mix=(a,b,t)=>clamp(a+(b-a)*t);
+    const pixel=(x,y,c,a=255)=>{if(x<0||x>=64||y<0||y>=64)return;const i=(y*64+x)*4;data[i]=c[0];data[i+1]=c[1];data[i+2]=c[2];data[i+3]=a};
+    const fill=(c,a=255)=>{for(let y=0;y<64;y++)for(let x=0;x<64;x++)pixel(x,y,c,a)};
+    fill(B);
+    // Dense but restrained 1px/2px pixel noise, generated once and cached.
+    for(let i=0;i<520;i++){
+      const t=(rnd()-.5)*.34, c=[mix(B[0],t<0?0:255,Math.abs(t)),mix(B[1],t<0?0:255,Math.abs(t)),mix(B[2],t<0?0:255)];
+      const x=(rnd()*64)|0,y=(rnd()*64)|0,sz=rnd()<.9?1:2;
+      for(let yy=0;yy<sz;yy++)for(let xx=0;xx<sz;xx++)pixel(x+xx,y+yy,c,80+(rnd()*110|0));
     }
-
     if(mode==="grassTop"){
-      // Grass top: layered green pixels + tiny dark soil flecks.
-      for(let i=0;i<170;i++){
-        const c=rnd()<.72?shade(B,(rnd()-.35)*.32):shade(A,(rnd()-.25)*.25);
-        g.fillStyle=col(c,.45+rnd()*.45);g.fillRect((rnd()*64)|0,(rnd()*64)|0,1+(rnd()<.16?1:0),1+(rnd()<.08?1:0));
-      }
-      for(let i=0;i<42;i++){g.fillStyle=col([35,78,25],.65);g.fillRect((rnd()*64)|0,(rnd()*64)|0,1,1+(rnd()*3|0));}
+      for(let i=0;i<150;i++){const x=(rnd()*64)|0,y=(rnd()*64)|0,c=rnd()<.7?[63,126,43]:[126,174,69];pixel(x,y,c,150+(rnd()*90|0));if(rnd()<.18)pixel(x,y+1,c,120)}
+      for(let i=0;i<35;i++)pixel((rnd()*64)|0,(rnd()*64)|0,[28,72,25],150);
+    } else if(mode==="grassSide"){
+      for(let y=0;y<8;y++)for(let x=0;x<64;x++)pixel(x,y,[88+(rnd()*45|0),150+(rnd()*45|0),52+(rnd()*25|0)],255);
+      for(let i=0;i<120;i++)pixel((rnd()*64)|0,(rnd()*56+8)|0,[70+(rnd()*45|0),45+(rnd()*30|0),25+(rnd()*18|0)],100+(rnd()*100|0));
+      for(let i=0;i<28;i++)pixel((rnd()*64)|0,(rnd()*10)|0,[38,92,28],190);
+    } else if(mode==="dirt"){
+      for(let i=0;i<100;i++)pixel((rnd()*64)|0,(rnd()*64)|0,rnd()<.5?[91,57,31]:[139,91,49],90+(rnd()*90|0));
+    } else if(mode==="stone"){
+      for(let i=0;i<55;i++){const x=(rnd()*62)|0,y=(rnd()*62)|0,w=2+(rnd()*4|0);for(let xx=0;xx<w;xx++)pixel(x+xx,y,rnd()<.5?[92,92,92]:[145,145,145],100+(rnd()*70|0));}
+      for(let i=0;i<18;i++)pixel((rnd()*64)|0,(rnd()*64)|0,[55,55,55],130);
+    } else if(mode==="cobble"){
+      for(let i=0;i<38;i++){const x=(rnd()*60)|0,y=(rnd()*60)|0,w=3+(rnd()*6|0),h=3+(rnd()*5|0);for(let yy=0;yy<h;yy++)for(let xx=0;xx<w;xx++)if(xx===0||yy===0)pixel(x+xx,y+yy,[45,45,45],160);}
+    } else if(mode==="sand"){
+      for(let i=0;i<120;i++)pixel((rnd()*64)|0,(rnd()*64)|0,rnd()<.5?[193,168,99]:[232,211,135],90+(rnd()*100|0));
+    } else if(mode==="woodTop"){
+      for(let r=5;r<32;r+=7){for(let x=32-r;x<=32+r;x++){pixel(x,32-r,[106,65,32],220);pixel(x,32+r,[106,65,32],220)}for(let y=32-r;y<=32+r;y++){pixel(32-r,y,[106,65,32],220);pixel(32+r,y,[106,65,32],220)}}
+      for(let i=0;i<28;i++)pixel((rnd()*64)|0,(rnd()*64)|0,[188,132,73],130);
+    } else if(mode==="woodSide"){
+      for(let x=4;x<64;x+=10){for(let y=0;y<64;y++)pixel(x,y,[62,38,22],190);for(let y=0;y<64;y++)if(x+2<64)pixel(x+2,y,[177,119,64],90)}
+      for(let i=0;i<50;i++)pixel((rnd()*64)|0,(rnd()*64)|0,rnd()<.5?[92,57,29]:[190,130,70],110);
+    } else if(mode==="ore"){
+      for(let i=0;i<28;i++)pixel((rnd()*64)|0,(rnd()*64)|0,[32,32,32],180);
+      for(let i=0;i<20;i++){const x=(rnd()*62)|0,y=(rnd()*62)|0;pixel(x,y,A,255);if(rnd()<.4)pixel(x+1,y,A,255);}
+    } else if(mode==="brick"){
+      for(let y=7;y<64;y+=16)for(let x=0;x<64;x++)pixel(x,y,[89,44,38],220);
+      for(let row=0;row<4;row++){const off=(row&1)*8;for(let x=off;x<64;x+=16)for(let y=row*16;y<Math.min(64,row*16+16);y++)pixel(x,y,[89,44,38],220);}
+    } else if(mode==="planks"){
+      for(let y=7;y<64;y+=10)for(let x=0;x<64;x++)pixel(x,y,[96,60,31],180);
+      for(let i=0;i<40;i++)pixel((rnd()*64)|0,(rnd()*64)|0,[204,145,82],120);
     }
-
-    if(mode==="dirt"){
-      for(let i=0;i<70;i++){
-        const c=rnd()<.55?[92,58,31]:[145,94,51];g.fillStyle=col(c,.28+rnd()*.42);
-        g.fillRect((rnd()*64)|0,(rnd()*64)|0,1+(rnd()<.2?1:0),1+(rnd()<.1?1:0));
-      }
-    }
-
-    if(mode==="grassSide"){
-      // Thin green cap at the top, soil immediately below it.
-      g.fillStyle="#6fae3d";g.fillRect(0,0,64,8);
-      for(let i=0;i<80;i++){g.fillStyle=col(rnd()<.5?[49,92,29]:[116,171,61],.45+rnd()*.45);g.fillRect((rnd()*64)|0,(rnd()*11)|0,1+(rnd()<.15?1:0),1+(rnd()<.2?1:0));}
-      for(let i=0;i<35;i++){g.fillStyle=col([72,45,25],.5);g.fillRect((rnd()*64)|0,7+(rnd()*57|0),1,1);}
-    }
-
-    if(mode==="stone"||mode==="cobble"){
-      for(let i=0;i<(mode==="cobble"?30:55);i++){
-        const x=(rnd()*60)|0,y=(rnd()*60)|0,w=2+(rnd()*6|0),h=2+(rnd()*5|0);
-        g.fillStyle=col(rnd()<.5?shade(B,-.13):shade(A,.05),.45+rnd()*.3);g.fillRect(x,y,w,h);
-        if(mode==="cobble"){g.fillStyle=col([35,35,35],.28);g.fillRect(x,y,w,1);g.fillRect(x,y,1,h);}
-      }
-    }
-
-    if(mode==="sand"){
-      for(let i=0;i<90;i++){g.fillStyle=col(rnd()<.5?[188,163,93]:[240,220,143],.35+rnd()*.45);g.fillRect((rnd()*64)|0,(rnd()*64)|0,1+(rnd()<.08?1:0),1);}
-    }
-
-    if(mode==="woodSide"){
-      for(let x=4;x<64;x+=10){g.fillStyle=col([61,37,21],.55);g.fillRect(x,0,2,64);g.fillStyle=col([176,118,62],.32);g.fillRect(x+2,0,1,64);}
-      for(let i=0;i<35;i++){g.fillStyle=col(rnd()<.5?[93,57,29]:[205,145,78],.45);g.fillRect((rnd()*64)|0,(rnd()*64)|0,1+(rnd()<.12?2:0),1);}
-    }
-
-    if(mode==="woodTop"){
-      const cx=32,cy=32;
-      g.fillStyle="#b67b43";g.fillRect(0,0,64,64);
-      for(let r=5;r<34;r+=7){g.strokeStyle="#70451f";g.lineWidth=2;g.strokeRect(cx-r,cy-r,r*2,r*2);}
-      for(let i=0;i<22;i++){g.fillStyle=col(rnd()<.55?[87,53,26]:[213,151,84],.5);g.fillRect((rnd()*64)|0,(rnd()*64)|0,1,1);}
-    }
-
-    if(mode==="ore"){
-      for(let i=0;i<20;i++){g.fillStyle=col([38,38,38],.6);g.fillRect((rnd()*62)|0,(rnd()*62)|0,2+(rnd()*3|0),2+(rnd()*3|0));}
-      for(let i=0;i<15;i++){g.fillStyle=accent;g.fillRect((rnd()*61)|0,(rnd()*61)|0,2+(rnd()<.25?1:0),2+(rnd()<.2?1:0));}
-    }
-
-    if(mode==="brick"){
-      g.fillStyle="#9a4b3f";g.fillRect(0,0,64,64);
-      g.strokeStyle="#623029";g.lineWidth=2;
-      for(let y=8;y<64;y+=16){g.beginPath();g.moveTo(0,y);g.lineTo(64,y);g.stroke();}
-      for(let y=0;y<64;y+=16){const off=((y/16)&1)*8;for(let x=off;x<64;x+=16){g.beginPath();g.moveTo(x,y);g.lineTo(x,y+16);g.stroke();}}
-      for(let i=0;i<75;i++){g.fillStyle=col(rnd()<.5?[116,52,43]:[191,91,71],.28+rnd()*.35);g.fillRect((rnd()*64)|0,(rnd()*64)|0,1+(rnd()<.12?1:0),1);}
-    }
-
-    if(mode==="planks"){
-      for(let y=0;y<64;y+=10){g.fillStyle=col([101,63,31],.65);g.fillRect(0,y,64,2);}
-      for(let i=0;i<80;i++){g.fillStyle=col(rnd()<.5?[184,123,63]:[223,164,92],.38+rnd()*.35);g.fillRect((rnd()*64)|0,(rnd()*64)|0,2+(rnd()<.1?2:0),1);}
-    }
-
-    const t=new THREE.CanvasTexture(c);
-    t.magFilter=THREE.NearestFilter;t.minFilter=THREE.NearestFilter;
-    t.generateMipmaps=false;t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=1;
+    const t=new THREE.DataTexture(data,64,64,THREE.RGBAFormat,THREE.UnsignedByteType);
+    t.magFilter=THREE.NearestFilter;t.minFilter=THREE.NearestFilter;t.generateMipmaps=false;t.colorSpace=THREE.SRGBColorSpace;t.needsUpdate=true;
     this._textureCache.set(k,t);return t;
   }
   mat(a,b,s,e={},m="normal"){return new THREE.MeshLambertMaterial({map:this.makeTexture(a,b,s,m),...e})}
   makeMaterials(){const M={};const simple=(id,a,b,s,e={},mode="normal")=>{const m=this.mat(a,b,s,e,mode);M[id]=[m,m,m,m,m,m]};
-    M[BLOCK.GRASS]=[
-      this.mat("#79502d","#9a6738",1,{},"dirt"),this.mat("#79502d","#9a6738",2,{},"dirt"),
-      this.mat("#58a436","#3c7627",3,{},"grassTop"),this.mat("#76502e","#9a693c",4,{},"grassSide"),
-      this.mat("#79502d","#9a6738",5,{},"dirt"),this.mat("#79502d","#9a6738",6,{},"dirt")
-    ];
-    simple(BLOCK.DIRT,"#79502d","#9b693d",10,{},"dirt");
-    simple(BLOCK.STONE,"#777777","#4f4f4f",20,{},"stone");
-    simple(BLOCK.SAND,"#d8c17a","#a78c51",30,{},"sand");
-    simple(BLOCK.GRAVEL,"#77736b","#514f4b",40,{},"stone");
-    M[BLOCK.LOG]=[
-      this.mat("#7d542f","#4b301d",50,{},"woodSide"),this.mat("#7d542f","#4b301d",51,{},"woodSide"),
-      this.mat("#b67b43","#70451f",52,{},"woodTop"),this.mat("#b67b43","#70451f",53,{},"woodTop"),
-      this.mat("#7d542f","#4b301d",54,{},"woodSide"),this.mat("#7d542f","#4b301d",55,{},"woodSide")
-    ];
+    M[BLOCK.GRASS]=[this.mat("#5b913b","#315f2b",1),this.mat("#5b913b","#315f2b",2),this.mat("#73b84c","#356f2e",3,{},"grassTop"),this.mat("#76502e","#9a693c",4),this.mat("#5b913b","#315f2b",5),this.mat("#5b913b","#315f2b",6)];
+    simple(BLOCK.DIRT,"#79502d","#9b693d",10);simple(BLOCK.STONE,"#777777","#4f4f4f",20,{},"stone");simple(BLOCK.SAND,"#d8c17a","#a78c51",30);simple(BLOCK.GRAVEL,"#77736b","#514f4b",40);
+    M[BLOCK.LOG]=[this.mat("#7d542f","#4b301d",50),this.mat("#7d542f","#4b301d",51),this.mat("#9a7043","#4d301d",52,{},"woodTop"),this.mat("#9a7043","#4d301d",53,{},"woodTop"),this.mat("#7d542f","#4b301d",54),this.mat("#7d542f","#4b301d",55)];
     simple(BLOCK.LEAVES,"#3f8e3a","#285f2b",60,{transparent:true,opacity:.92,side:THREE.DoubleSide});
     simple(BLOCK.PLANKS,"#a56f3f","#6d4527",90,{},"planks");
     simple(BLOCK.GLASS,"#b9e8f5","#ffffff",100,{transparent:true,opacity:.38,side:THREE.DoubleSide});
@@ -140,7 +90,7 @@ export class World{
     simple(BLOCK.COAL,"#303030","#111111",70,{},"ore");simple(BLOCK.IRON,"#a67558","#6d4633",80,{},"ore");simple(BLOCK.COPPER,"#a66f55","#6d4336",240,{},"ore");
     simple(BLOCK.FURNACE,"#777777","#333333",135,{},"stone");simple(BLOCK.CHEST,"#9a5b28","#4e2912",150);simple(BLOCK.LANTERN,"#d79b35","#6e4217",140,{emissive:0x7a4b12,emissiveIntensity:.8});
     simple(BLOCK.CAMPFIRE,"#d65d24","#542012",160,{emissive:0xff4b12,emissiveIntensity:1.8});simple(BLOCK.MOSS,"#4f8744","#285b2b",170);simple(BLOCK.GLOWSTONE,"#e7c85d","#a86b19",180,{emissive:0xffaa33,emissiveIntensity:1.5});
-    simple(BLOCK.COBBLE,"#696969","#454545",190,{},"cobble");simple(BLOCK.SNOW,"#e9f2f4","#b9c6ca",200);simple(BLOCK.CLAY,"#aa7667","#704b45",210);simple(BLOCK.FARMLAND,"#6b452c","#382516",220);simple(BLOCK.WHEAT,"#7f9a39","#d2b64a",230,{transparent:true,opacity:.9,side:THREE.DoubleSide});simple(BLOCK.BEDROCK,"#171717","#292929",130);return M;
+    simple(BLOCK.COBBLE,"#696969","#454545",190,{},"stone");simple(BLOCK.SNOW,"#e9f2f4","#b9c6ca",200);simple(BLOCK.CLAY,"#aa7667","#704b45",210);simple(BLOCK.FARMLAND,"#6b452c","#382516",220);simple(BLOCK.WHEAT,"#7f9a39","#d2b64a",230,{transparent:true,opacity:.9,side:THREE.DoubleSide});simple(BLOCK.BEDROCK,"#171717","#292929",130);return M;
   }
   applyChanges(c){const s=c.size;for(const [k,b] of this.changes){const [x,y,z]=k.split(",").map(Number);if(Math.floor(x/s)===c.cx&&Math.floor(z/s)===c.cz)c.set(((x%s)+s)%s,y,((z%s)+s)%s,b)}}
   async generateAround(px,pz){const s=this.cfg.WORLD.CHUNK_SIZE,r=this.cfg.WORLD.RENDER_DISTANCE,cx=Math.floor(px/s),cz=Math.floor(pz/s),center=this.key(cx,cz);if(this.generationBusy||this.lastCenter===center)return false;this.lastCenter=center;this.generationBusy=true;

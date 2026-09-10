@@ -1,5 +1,5 @@
 import * as THREE from "https://unpkg.com/three@0.179.1/build/three.module.js";
-import {CONFIG} from "./config.js?v=21";import {QualityManager} from "./QualityManager.js?v=21";import {World} from "./world/World.js?v=21";import {Player} from "./player/Player.js?v=21";import {Controls} from "./player/Controls.js?v=21";import {MobManager} from "./entities/Mob.js?v=21";import {Particles} from "./rendering/Particles.js?v=21";import {Lighting} from "./rendering/Lighting.js?v=21";import {Effects} from "./rendering/Effects.js?v=21";import {Weather} from "./rendering/Weather.js?v=21";import {AudioManager} from "./audio/AudioManager.js?v=21";import {Inventory,RECIPES,craft} from "./inventory/Inventory.js?v=21";import {HUD} from "./ui/HUD.js?v=21";import {Menu} from "./ui/Menu.js?v=21";import {SaveManager} from "./save/SaveManager.js?v=21";import {BLOCK,INFO,ITEM,ICON} from "./world/Block.js?v=21";import {SurvivalSystems} from "./systems/SurvivalSystems.js?v=21";import {NetworkManager} from "./network/NetworkManager.js?v=21";
+import {CONFIG} from "./config.js?v=22";import {QualityManager} from "./QualityManager.js?v=22";import {World} from "./world/World.js?v=22";import {Player} from "./player/Player.js?v=22";import {Controls} from "./player/Controls.js?v=22";import {MobManager} from "./entities/Mob.js?v=22";import {Particles} from "./rendering/Particles.js?v=22";import {Lighting} from "./rendering/Lighting.js?v=22";import {Effects} from "./rendering/Effects.js?v=22";import {Weather} from "./rendering/Weather.js?v=22";import {AudioManager} from "./audio/AudioManager.js?v=22";import {Inventory,RECIPES,craft} from "./inventory/Inventory.js?v=22";import {HUD} from "./ui/HUD.js?v=22";import {Menu} from "./ui/Menu.js?v=22";import {SaveManager} from "./save/SaveManager.js?v=22";import {BLOCK,INFO,ITEM,ICON} from "./world/Block.js?v=22";import {SurvivalSystems} from "./systems/SurvivalSystems.js?v=22";import {NetworkManager} from "./network/NetworkManager.js?v=22";
 class Game{
  constructor(){const save=SaveManager.load();if(save?.seed)CONFIG.WORLD.SEED=save.seed;this.quality=new QualityManager();CONFIG.QUALITY=this.quality.preset;
   this.scene=new THREE.Scene();this.scene.background=new THREE.Color(0x87c9ef);this.camera=new THREE.PerspectiveCamera(CONFIG.RENDER.FOV,innerWidth/innerHeight,.05,CONFIG.RENDER.FAR);this.renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:this.quality.tier==="low"?"low-power":"high-performance"});this.quality.configureRenderer(this.renderer);if(this.quality.tier==="low")this.renderer.toneMapping=THREE.NoToneMapping;this.renderer.setSize(innerWidth,innerHeight);this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.05;document.getElementById("game").appendChild(this.renderer.domElement);
@@ -31,7 +31,8 @@ class Game{
     }
     setBoot(48,"Строим первый участок…");
     // Build only the first queued chunk before entering gameplay.
-    this.world.processMeshQueue(40);
+    this.world.processMeshQueue(24);
+    if(!this.world.meshes.has(this.world.key(cx,cz))) this.world.processMeshQueue(80);
     setBoot(70,"Настраиваем персонажа…");
     const save=SaveManager.load();
     if(save?.player){
@@ -50,7 +51,7 @@ class Game{
     this.running=true;
     setBoot(100,"Мир готов");
     requestAnimationFrame(()=>this.world.generateAround(this.player.pos.x,this.player.pos.z));
-    this.renderer.domElement.requestPointerLock?.();
+    if(!matchMedia("(pointer:coarse)").matches) this.renderer.domElement.requestPointerLock?.();
   }catch(err){
     console.error("WORLD START FAILED",err);
     this.running=false;
