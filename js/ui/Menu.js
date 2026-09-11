@@ -1,6 +1,7 @@
 import {SaveManager} from "../save/SaveManager.js";
 export class Menu{
  constructor(game){this.game=game;this.main=document.getElementById("mainMenu");this.pause=document.getElementById("pauseMenu");const q=id=>document.getElementById(id);
+  const version=q("mainMenu")?.querySelector(".menuVersion");if(version){const top=version.querySelector("span"),sub=version.querySelector("b");if(top)top.textContent="UNIVERSE 62";if(sub)sub.textContent="v62.0"}
   const bind=(id,fn)=>{const el=q(id);if(!el)return;el.type="button";el.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();fn(e)});el.addEventListener("touchend",e=>{if(e.cancelable)e.preventDefault();e.stopPropagation();fn(e)},{passive:false})};
   bind("playButton",()=>this.openMode());bind("settingsButton",()=>q("settingsPanel")?.classList.remove("hidden"));bind("creditsButton",()=>q("creditsPanel")?.classList.remove("hidden"));
   bind("modeBackButton",()=>this.closeAllSub());bind("singleplayerChoice",()=>this.openWorlds());bind("multiplayerChoice",()=>this.openMultiplayer());bind("singleBackButton",()=>this.openMode());bind("newWorldButton",()=>this.openCreateWorld());bind("newWorldBackButton",()=>this.openWorlds());bind("createWorldButton",()=>this.createWorld());
