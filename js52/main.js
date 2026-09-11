@@ -1,0 +1,199 @@
+import THREE from "./three.js";
+import {CONFIG} from "./config.js";import {QualityManager} from "./QualityManager.js";import {World} from "./world/World.js";import {Player} from "./player/Player.js";import {Controls} from "./player/Controls.js";import {MobManager} from "./entities/Mob.js";import {Particles} from "./rendering/Particles.js";import {Lighting} from "./rendering/Lighting.js";import {Effects} from "./rendering/Effects.js";import {Weather} from "./rendering/Weather.js";import {AudioManager} from "./audio/AudioManager.js";import {Inventory,RECIPES,craft} from "./inventory/Inventory.js";import {HUD} from "./ui/HUD.js";import {Menu} from "./ui/Menu.js";import {SaveManager} from "./save/SaveManager.js";import {BLOCK,INFO,ITEM,ICON} from "./world/Block.js";import {SurvivalSystems} from "./systems/SurvivalSystems.js";import {NetworkManager} from "./network/NetworkManager.js";import {DebugConsole} from "./debug/DebugConsole.js";
+class Game{
+ constructor(){const save=SaveManager.loadActive();if(save?.seed)CONFIG.WORLD.SEED=save.seed;this.quality=new QualityManager();CONFIG.QUALITY=this.quality.preset;
+  this.scene=new THREE.Scene();this.scene.background=new THREE.Color(0x87c9ef);this.scene.add(new THREE.HemisphereLight(0xffffff,0x4f5f45,1.35));this.scene.add(new THREE.AmbientLight(0xffffff,0.35));this.camera=new THREE.PerspectiveCamera(CONFIG.RENDER.FOV,innerWidth/innerHeight,.05,CONFIG.RENDER.FAR);try{this.renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:this.quality.tier==="low"?"low-power":"high-performance",stencil:false,depth:true,preserveDrawingBuffer:false});}catch(e){throw new Error("WebGL недоступен на этом устройстве: "+(e?.message||e))}this.quality.configureRenderer(this.renderer);if(this.quality.tier==="low")this.renderer.toneMapping=THREE.NoToneMapping;this.renderer.setSize(innerWidth,innerHeight,false);this.renderer.setScissorTest(false);this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.shadowMap.enabled=this.quality.preset.shadows;this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;this.renderer.toneMapping=this.quality.tier==="low"?THREE.NoToneMapping:THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=this.quality.tier==="low"?1:1.05;document.getElementById("game").appendChild(this.renderer.domElement);
+  this.controls=new Controls(this.camera,this.renderer.domElement);this.world=new World(this.scene,CONFIG);this.world.loadChanges(save?.changes||[]);this.player=new Player(this.camera,this.world,this.controls,CONFIG);this.inventory=new Inventory();this.player.setInventory(this.inventory);if(!save?.inventory){this.inventory.add(ITEM.SEEDS,8);this.inventory.add(ITEM.HOE,1);this.inventory.add(BLOCK.GRASS,32);this.inventory.add(BLOCK.DIRT,64);this.inventory.add(BLOCK.STONE,64);this.inventory.add(BLOCK.LOG,16);this.inventory.add(BLOCK.PLANKS,32);this.inventory.add(BLOCK.SAND,32);this.inventory.add(ITEM.APPLE,3)}
+  this.hud=new HUD(this.player,this.inventory);this.mobs=new MobManager(this.scene,this.world,CONFIG.QUALITY);this.particles=new Particles(this.scene,CONFIG.QUALITY);this.light=null;this.weather=null;this.effects=new Effects(this.renderer);this.audio=new AudioManager();this.menu=new Menu(this);this.systems=new SurvivalSystems(this);this.network=new NetworkManager(this);this.debug=new DebugConsole(this);this.THREE=THREE;this.vec=(x,y,z)=>new THREE.Vector3(x,y,z);this.running=false;this.inventoryOpen=false;this.mode="singleplayer";this.reducedMotion=false;this.installPrompt=null;this.lastFootstep=0;this.lastPlayerX=0;this.lastPlayerZ=0;this.breakProgress=0;this.miningHeld=false;this.breakTargetKey="";this.breakTargetId=0;this.breakTime=0;this.perfFrames=0;this.perfTime=0;this.perfCooldown=0;this.perfStable=0;this.dynamicPixelRatio=this.quality.preset.pixelRatio;this.outline=this.makeOutline();this.time=save?.time||180;this.last=performance.now();this.mobTimer=0;this.saveTimer=0;this.mineTimer=0;this.worldStreamTimer=0;this.fallTimer=0;this.smokeTimer=0;this.raycastTimer=0;this.cachedTarget=null;this.chunkTickTimer=0;const qv=document.getElementById("qualityValue"),qs=document.getElementById("qualitySelect");if(qv)qv.textContent=this.quality.tier.toUpperCase();if(qs)qs.value=this.quality.tier;this.setupInput();this.setupTouchLayout();this.setupInventory();this.setupInstall();if(save?.inventory)this.inventory.deserialize(save.inventory);if(save?.systems)this.systems.deserialize(save.systems);if(save?.player){const x=Number(save.player.x),y=Number(save.player.y),z=Number(save.player.z);if([x,y,z].every(Number.isFinite)){this.player.pos.set(x,Math.max(1,Math.min(CONFIG.WORLD.HEIGHT-2,y)),z)}}addEventListener("resize",()=>this.resize());this.resize();this.setModeBadge();this.setGameUI(false);this.loop()}
+ setGameUI(visible){
+  const hud=document.getElementById("hud"),mobile=document.getElementById("mobileControls"),pause=document.getElementById("pauseGameButton");
+  if(hud)hud.classList.toggle("gameActive",!!visible);
+  if(mobile)mobile.classList.toggle("gameActive",!!visible);
+  if(pause)pause.style.display=visible?"block":"none";
+ }
+ async start(){
+  if(this.starting)return;
+  this.starting=true;
+  const boot=document.getElementById("bootSplash"),bar=document.getElementById("bootProgress"),status=document.getElementById("bootStatus");
+  const setBoot=(pct,text)=>{if(bar)bar.style.width=pct+"%";if(status)status.textContent=text};
+  try{
+    // iOS Safari can leave Screen Orientation.lock() pending. Never block world startup on it.
+    this.requestLandscape();
+    this.mode="singleplayer";
+    this.network.disconnect();
+    this.setModeBadge();
+    try{this.audio.start()}catch(e){console.warn("Audio disabled",e)}
+    this.menu.hideMain();
+    this.running=false;
+    setBoot(8,"Запускаем мир…");
+    this.world.cfg.WORLD.RENDER_DISTANCE=Math.min(1,this.quality.preset.startupDistance);
+    this.world.lastCenter="";
+    const s=this.world.cfg.WORLD.CHUNK_SIZE;
+    const cx=Math.floor(this.player.pos.x/s),cz=Math.floor(this.player.pos.z/s);
+    setBoot(20,"Создаём стартовый участок…");
+    if(!this.world.chunks.has(this.world.key(cx,cz))){
+      // Always generate the first chunk on the main thread: this avoids a Safari Worker stall.
+      this.world.generateChunk(cx,cz,false);
+    }
+    setBoot(48,"Строим первый участок…");
+    // Build only the first queued chunk before entering gameplay.
+    this.world.processMeshQueue(60);
+    setBoot(70,"Настраиваем персонажа…");
+    const save=SaveManager.loadActive();
+    if(save?.player){
+      this.player.health=save.player.health;
+      this.player.hunger=save.player.hunger;
+    }else{
+      this.player.pos.y=this.findGround(this.player.pos.x,this.player.pos.z)+.02;
+    }
+    this.camera.position.set(this.player.pos.x,this.player.pos.y+1.62,this.player.pos.z);
+    this.world.cfg.WORLD.RENDER_DISTANCE=this.quality.preset.renderDistance;
+    this.world.lastCenter="";
+    // The first playable frame must not depend on optional systems or workers.
+    setBoot(88,"Запускаем игровой кадр…");
+    this.running=true;
+    this.setGameUI(true);
+    requestAnimationFrame(()=>this.world.processMeshQueue(60));
+    setBoot(100,"Мир готов");
+    // Initialize heavy optional systems after the first visible frame.
+    setTimeout(()=>{
+      try{
+        if(this.running && this.world.chunks.size>0 && this.world.meshes.size===0){
+          console.warn("No chunk mesh after startup; forcing rebuild");
+          for(const c of this.world.chunks.values()) this.world.queueRebuild(c);
+          this.world.processMeshQueue(100);
+        }
+      }catch(e){console.error("Chunk recovery failed",e)}
+    },1500);
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      try{this.light=new Lighting(this.scene,this.world,CONFIG)}catch(e){console.warn("Lighting disabled",e);this.light=null}
+      try{this.weather=new Weather(this.scene,CONFIG.QUALITY)}catch(e){console.warn("Weather disabled",e);this.weather=null}
+      // Expand the world only after gameplay is already responsive.
+      requestAnimationFrame(()=>this.world.generateAround(this.player.pos.x,this.player.pos.z));
+    }));
+    if(!matchMedia("(pointer:coarse)").matches) this.renderer.domElement.requestPointerLock?.();
+  }catch(err){
+    console.error("WORLD START FAILED",err);
+    this.running=false;
+    this.menu.showMain();
+    if(status)status.textContent="Ошибка мира: "+(err?.message||String(err));
+    const retry=document.getElementById("engineRetry");
+    if(retry)retry.classList.remove("hidden");
+  }finally{
+    this.starting=false;
+  }
+ }
+ findGround(x,z){for(let y=CONFIG.WORLD.HEIGHT-1;y>=0;y--)if(INFO[this.world.getBlock(Math.floor(x),y,Math.floor(z))]?.solid)return y+1;return 70}
+ newWorld(name="Новый мир",seed=""){this.network.disconnect();SaveManager.createWorld(name,seed);try{sessionStorage.setItem("vs_launch_world_v52","1")}catch(e){}location.reload()}
+ hostLAN(){this.save();const u=`${location.protocol==="https:"?"wss":"ws"}://${location.host}/ws`;this.mode="lan-host";this.setModeBadge();this.menu.hideMain();this.network.connect(u,true);this.network.chatLine("★ Локальная игра открыта для друзей");this.network.syncHostWorld();this.running=true;if(!matchMedia("(pointer:coarse)").matches)this.renderer.domElement.requestPointerLock?.()}
+ connectLAN(){const v=document.getElementById("lanAddress"),u=v?.value.trim();if(!u){this.network.chatLine("Укажи адрес LAN-сервера");return}this.mode="lan-client";this.setModeBadge();this.menu.hideMain();this.network.connect(u,false);this.running=true;if(!matchMedia("(pointer:coarse)").matches)this.renderer.domElement.requestPointerLock?.()}
+ resume(){this.menu.hidePause();this.running=true;this.setGameUI(true);this.renderer.domElement.requestPointerLock?.()}
+ save(){const ok=SaveManager.save({systems:this.systems.serialize(),seed:CONFIG.WORLD.SEED,time:this.time,player:{x:this.player.pos.x,y:this.player.pos.y,z:this.player.pos.z,health:this.player.health,hunger:this.player.hunger},inventory:this.inventory.serialize(),changes:this.world.serializeChanges()});if(ok){const t=document.getElementById("saveToast");t.textContent="✓ Мир сохранён";t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1200)}}
+ toMenu(){this.save();this.network.disconnect();this.mode="singleplayer";this.setModeBadge();this.running=false;this.setGameUI(false);document.exitPointerLock?.();this.menu.hidePause();this.menu.showMain()}
+ toggleInventory(){this.inventoryOpen=!this.inventoryOpen;const panel=document.getElementById("inventoryPanel");if(!panel)return;panel.classList.toggle("hidden",!this.inventoryOpen);if(this.inventoryOpen){this.running=false;document.exitPointerLock?.();this.renderInventory()}else{this.running=true;if(!matchMedia("(pointer:coarse)").matches)this.renderer.domElement.requestPointerLock?.()}}
+ setupInventory(){this.renderInventory();document.querySelectorAll("[data-recipe]").forEach((b,i)=>b.onclick=()=>{if(craft(this.inventory,RECIPES[i])){this.audio.block();this.renderInventory()}})}
+ renderInventory(){
+  const grid=document.getElementById("inventoryGrid"),recipes=document.getElementById("recipes");if(!grid||!recipes)return;
+  const icon=id=>ICON[id]||"·";grid.innerHTML="";
+  for(let i=0;i<36;i++){const s=this.inventory.slots[i],d=document.createElement("button");d.type="button";d.className="invSlot"+(i===this.inventory.selected?" selected":"");d.innerHTML=`<span class="slotIcon">${icon(s.id)}</span><small>${s.count||""}</small>`;d.onclick=()=>{this.inventory.selected=i;this.renderInventory()};d.ondblclick=()=>{if(this.inventory.equipFromInventory(i,this.equipmentSlotForItem(s.id))){this.audio.block();this.renderInventory()}};grid.appendChild(d)}
+  const eq=document.getElementById("equipmentGrid");if(eq){eq.querySelectorAll("[data-equip-slot]").forEach(el=>{const slot=el.dataset.equipSlot,id=this.inventory.equipmentItem(slot);el.innerHTML=`<span class="equipmentIcon">${id?icon(id):"＋"}</span><small>${id?(INFO[id]?.name||"Предмет"):el.dataset.empty}</small>`;el.classList.toggle("filled",!!id);el.onclick=()=>{if(this.inventory.unequip(slot)){this.audio.block();this.renderInventory()}}})}
+  recipes.innerHTML="";RECIPES.forEach((r,i)=>{const b=document.createElement("button");b.type="button";b.dataset.recipe=i;b.innerHTML=`<strong>${icon(r.out.id)} ${r.name}</strong><small>${r.in.map(x=>`${INFO[x.id]?.name||"?"} ×${x.count}`).join("  +  ")}</small>`;b.onclick=()=>{if(craft(this.inventory,r)){this.audio.block();this.renderInventory()}};recipes.appendChild(b)});
+  const selectedName=INFO[this.inventory.selectedItem()?.id]?.name||"Пусто",selectedInfo=document.getElementById("inventorySelectedInfo");if(selectedInfo)selectedInfo.textContent=selectedName;const rs=document.getElementById("recipeStatus");if(rs)rs.textContent=`Выбрано: ${selectedName} • Слот ${this.inventory.selected+1}/36 • Двойное нажатие — экипировать`;
+  const armor=this.getArmorValue();const av=document.getElementById("armorValue");if(av)av.textContent=`ЗАЩИТА ${armor}`;
+ }
+ equipmentSlotForItem(id){const info=INFO[id];if(!info)return null;if(info.tool||info.tool==="sword")return info.tool==="sword"?"weapon":"tool";if(info.armorSlot)return info.armorSlot;return null}
+ getArmorValue(){return Object.values(this.inventory.equipment||{}).reduce((sum,id)=>sum+(INFO[id]?.armor||0),0)}
+
+ setupTouchLayout(){
+  this.touchLayoutKey="vs_touch_layout_v50";
+  this.touchDefaults={
+    joystick:{x:3,y:68,size:136},jump:{x:77,y:67,size:84},attack:{x:87,y:67,size:84},use:{x:77,y:82,size:84},inventory:{x:87,y:82,size:84},pause:{x:50,y:3,size:52}
+  };
+  try{this.touchLayout=JSON.parse(localStorage.getItem(this.touchLayoutKey)||"null")||JSON.parse(JSON.stringify(this.touchDefaults))}catch{this.touchLayout=JSON.parse(JSON.stringify(this.touchDefaults))}
+  this.editingControls=false;this.selectedControl=null;this.applyTouchLayout();
+  const q=id=>document.getElementById(id),range=q("controlSizeRange"),value=q("controlSizeValue"),selected=q("controlSelected");
+  q("controlsEditButton")?.addEventListener("click",()=>this.openControlsEditor());
+  q("controlsDone")?.addEventListener("click",()=>this.closeControlsEditor());
+  q("controlsReset")?.addEventListener("click",()=>{this.touchLayout=JSON.parse(JSON.stringify(this.touchDefaults));this.applyTouchLayout();if(range)range.value=this.selectedControl?(this.touchLayout[this.selectedControl]?.size||82):82;if(value)value.textContent=range?.value||82});
+  range?.addEventListener("input",()=>{if(!this.selectedControl)return;this.touchLayout[this.selectedControl].size=Number(range.value);this.applyTouchLayout();if(value)value.textContent=range.value;this.persistTouchLayout()});
+  const controls=["joystick","jump","attack","use","inventory","pause"];
+  for(const key of controls){const el=key==="pause"?q("pauseGameButton"):document.querySelector(`[data-control="${key}"]`);if(!el)continue;
+    el.addEventListener("pointerdown",e=>{if(!this.editingControls)return;e.preventDefault();e.stopPropagation();this.selectControl(key);el.setPointerCapture?.(e.pointerId);const r=el.getBoundingClientRect();el._drag={id:e.pointerId,dx:e.clientX-r.left,dy:e.clientY-r.top};el.classList.add("editing")},{passive:false});
+    el.addEventListener("pointermove",e=>{if(!this.editingControls||!el._drag||el._drag.id!==e.pointerId)return;e.preventDefault();e.stopPropagation();const x=Math.max(0,Math.min(innerWidth-el.offsetWidth,e.clientX-el._drag.dx)),y=Math.max(0,Math.min(innerHeight-el.offsetHeight,e.clientY-el._drag.dy));this.touchLayout[key].x=x/innerWidth*100;this.touchLayout[key].y=y/innerHeight*100;this.applyTouchLayout(false)},{passive:false});
+    const end=e=>{if(el._drag?.id!==e.pointerId)return;el._drag=null;el.classList.remove("editing");this.persistTouchLayout()};el.addEventListener("pointerup",end);el.addEventListener("pointercancel",end);
+  }
+ }
+ selectControl(key){this.selectedControl=key;const q=id=>document.getElementById(id),r=q("controlSizeRange"),v=q("controlSizeValue"),s=q("controlSelected"),item=this.touchLayout[key]||this.touchDefaults[key];if(r)r.value=item.size;if(v)v.textContent=item.size;if(s)s.textContent="Выбрано: "+({joystick:"Джойстик",jump:"Прыжок",attack:"Атака",use:"Использовать",inventory:"Инвентарь",pause:"Пауза"}[key]||key)}
+ applyTouchLayout(save=true){
+  const root=document.body;for(const [key,item] of Object.entries(this.touchLayout||{})){const el=key==="pause"?document.getElementById("pauseGameButton"):document.querySelector(`[data-control="${key}"]`);if(!el)continue;el.style.left=item.x+"%";el.style.top=item.y+"%";el.style.right="auto";el.style.bottom="auto";el.style.width=item.size+"px";el.style.height=item.size+"px";el.style.fontSize=Math.max(20,item.size*.30)+"px"}if(save)this.persistTouchLayout()}
+ persistTouchLayout(){try{localStorage.setItem(this.touchLayoutKey,JSON.stringify(this.touchLayout))}catch{}}
+ openControlsEditor(){this.running=false;this.editingControls=true;document.body.classList.add("controls-editor-active");this.menu.hidePause();document.getElementById("controlsEditor")?.classList.remove("hidden");document.getElementById("mobileControls")?.classList.add("editorVisible","gameActive");this.applyTouchLayout(false);}
+ closeControlsEditor(){this.editingControls=false;document.body.classList.remove("controls-editor-active");document.getElementById("controlsEditor")?.classList.add("hidden");document.getElementById("mobileControls")?.classList.remove("editorVisible","gameActive");this.persistTouchLayout();this.menu.showPause();}
+ pauseGame(){if(!this.running)return;this.running=false;this.setGameUI(false);this.menu.showPause();document.exitPointerLock?.();}
+ setupInput(){document.getElementById("multiplayerButton")?.addEventListener("click",()=>document.getElementById("multiplayerPanel")?.classList.remove("hidden"));document.getElementById("closeMultiplayer")?.addEventListener("click",()=>document.getElementById("multiplayerPanel")?.classList.add("hidden"));document.getElementById("connectButton")?.addEventListener("click",()=>{const v=document.getElementById("serverAddress");let u=v?.value.trim();if(!u)u=`${location.protocol==="https:"?"wss":"ws"}://${location.host}/ws`;this.mode="multiplayer";this.setModeBadge();this.network.connect(u)});document.getElementById("disconnectButton")?.addEventListener("click",()=>this.network.disconnect());document.getElementById("chatSend")?.addEventListener("click",()=>{const i=document.getElementById("chatInput");this.network.chat(i.value);i.value=""});document.getElementById("chatInput")?.addEventListener("keydown",e=>{if(e.key==="Enter"){this.network.chat(e.target.value);e.target.value=""}});addEventListener("keydown",e=>{if(e.code==="Escape"){if(this.inventoryOpen){this.toggleInventory();return}if(this.running){this.running=false;this.menu.showPause();document.exitPointerLock?.()}return}if(e.code==="KeyE")this.toggleInventory();if(e.code.startsWith("Digit")){const n=+e.code.slice(5)-1;if(n>=0&&n<9)this.inventory.selected=n}if(e.code==="KeyF"&&this.player.eat()){this.audio.block();this.particles.burst(this.player.pos.clone().add(new THREE.Vector3(0,1,0)),0xff5533,8)}});
+  addEventListener("mousedown",e=>{if(!this.running)return;if(e.button===0){this.miningHeld=true;this.attackOrBreak()}if(e.button===2)this.placeBlock()});addEventListener("mouseup",e=>{if(e.button===0)this.stopMining()});addEventListener("blur",()=>this.stopMining());addEventListener("contextmenu",e=>e.preventDefault());addEventListener("wheel",e=>{this.inventory.selected=(this.inventory.selected+(e.deltaY>0?1:-1)+9)%9});const bindTouchAction=(id,fn)=>{const el=document.getElementById(id);if(!el)return;el.addEventListener("pointerdown",e=>{if(this.editingControls||!this.running)return;e.preventDefault();e.stopPropagation();el.setPointerCapture?.(e.pointerId);fn()},{passive:false})};bindTouchAction("jumpButton",()=>{if(this.player.jump()){this.audio.jump()}});bindTouchAction("attackButton",()=>{this.miningHeld=true;this.attackOrBreak()});bindTouchAction("useButton",()=>this.useSelected());bindTouchAction("inventoryButton",()=>this.toggleInventory());addEventListener("pointerup",()=>this.stopMining());addEventListener("pointercancel",()=>this.stopMining());const pauseBtn=document.getElementById("pauseGameButton");pauseBtn?.addEventListener("pointerdown",e=>{if(!this.running)return;e.preventDefault();e.stopPropagation();this.pauseGame()},{passive:false});const bindPause=(id,fn)=>{const b=document.getElementById(id);if(!b)return;b.addEventListener("pointerdown",e=>{e.stopPropagation()},{passive:true});b.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();fn()})};bindPause("resumeButton",()=>this.resume());bindPause("saveButton",()=>this.save());bindPause("fullscreenPauseButton",()=>this.toggleFullscreen());bindPause("debugPauseButton",()=>this.debug?.show?.());bindPause("controlsEditButton",()=>this.openControlsEditor());bindPause("menuButton",()=>this.toMenu());const closeInv=document.getElementById("closeInventory");if(closeInv)closeInv.onclick=()=>{if(this.inventoryOpen)this.toggleInventory()};const closeContainer=document.getElementById("closeContainer");if(closeContainer)closeContainer.onclick=()=>this.systems.close();const depositContainer=document.getElementById("depositContainer");if(depositContainer)depositContainer.onclick=()=>this.systems.depositToChest();const depositAll=document.getElementById("depositAllContainer");if(depositAll)depositAll.onclick=()=>this.systems.depositAllToChest();
+  const joy=document.getElementById("joystick"),knob=document.getElementById("joystickKnob");let joyId=null;
+  const updateJoy=e=>{const r=joy.getBoundingClientRect(),dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),l=Math.min(r.width*.32,Math.hypot(dx,dy)),a=Math.atan2(dy,dx);knob.style.transform=`translate(${Math.cos(a)*l}px,${Math.sin(a)*l}px)`;this.controls.keys.KeyW=dy<-15;this.controls.keys.KeyS=dy>15;this.controls.keys.KeyA=dx<-15;this.controls.keys.KeyD=dx>15};
+  joy.addEventListener("pointerdown",e=>{if(this.editingControls||!this.running||joyId!==null)return;e.preventDefault();e.stopPropagation();joyId=e.pointerId;joy.setPointerCapture?.(e.pointerId);updateJoy(e)},{passive:false});
+  joy.addEventListener("pointermove",e=>{if(e.pointerId!==joyId||this.editingControls)return;e.preventDefault();e.stopPropagation();updateJoy(e)},{passive:false});
+  const stopJoy=e=>{if(e&&e.pointerId!==joyId)return;if(e)e.stopPropagation();joyId=null;knob.style.transform="";for(const k of ["KeyW","KeyA","KeyS","KeyD"])this.controls.keys[k]=false};joy.addEventListener("pointerup",stopJoy);joy.addEventListener("pointercancel",stopJoy);joy.addEventListener("lostpointercapture",()=>stopJoy());
+  let lookId=null,lastX=0,lastY=0;
+  const isUiTarget=t=>!!t?.closest?.("#mobileControls,#hotbar,#pauseGameButton,.screen,.debugScreen,#controlsEditor");
+  const lookDown=e=>{if(!this.running||this.editingControls||e.pointerType!=="touch"||isUiTarget(e.target))return;if(lookId!==null)return;lookId=e.pointerId;lastX=e.clientX;lastY=e.clientY;this.renderer.domElement.setPointerCapture?.(e.pointerId)};
+  const lookMove=e=>{if(e.pointerId!==lookId||!this.running||this.editingControls)return;e.preventDefault();const dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;this.controls.yaw-=dx*.006;this.controls.pitch-=dy*.006;this.controls.pitch=Math.max(-1.5,Math.min(1.5,this.controls.pitch))};
+  const lookEnd=e=>{if(e.pointerId===lookId)lookId=null};
+  this.renderer.domElement.addEventListener("pointerdown",lookDown,{passive:false});this.renderer.domElement.addEventListener("pointermove",lookMove,{passive:false});this.renderer.domElement.addEventListener("pointerup",lookEnd);this.renderer.domElement.addEventListener("pointercancel",lookEnd);
+ }
+ useSelected(){const s=this.inventory.selectedItem(),info=s?.id?INFO[s.id]:null;if(info?.food){if(this.player.eat())this.audio.block();return}if(s?.id===ITEM.HOE){const hit=this.player.raycast();if(hit&&[BLOCK.DIRT,BLOCK.GRASS].includes(hit.id)&&this.world.getBlock(hit.block.x,hit.block.y+1,hit.block.z)===BLOCK.AIR){this.world.setBlock(hit.block.x,hit.block.y,hit.block.z,BLOCK.FARMLAND);this.audio.block();this.particles.dust(new THREE.Vector3(hit.block.x+.5,hit.block.y+.5,hit.block.z+.5),0x7a4c2b,8);this.systems.award(2,"Первая грядка")}return}if(info?.place||info?.solid)this.placeBlock()}
+  attackOrBreak(){const target=this.player.raycast();if(this.systems.interact(target))return;const result=this.mobs.attack(this.player);if(result.hit){this.audio.hit();this.effects.hit();this.stopMining();if(result.dead){this.inventory.add(ITEM.RAW_MEAT,1);if(Math.random()<.25)this.inventory.add(ITEM.APPLE,1);this.systems.award(20,"Охотник на нежить");this.particles.burst(this.player.pos.clone().add(new THREE.Vector3(0,1,0)),0xb84b4b,20);}return}this.beginMining(target)}
+  beginMining(hit){
+    if(!hit||hit.id===BLOCK.BEDROCK)return false;
+    const info=INFO[hit.id]; if(!info?.drop)return false;
+    const s=this.inventory.selectedItem(),tool=INFO[s?.id];
+    if(info.tool&&(!tool?.tool||tool.tool!==info.tool||tool.power<(info.minPower||0)))return false;
+    const key=`${hit.block.x},${hit.block.y},${hit.block.z}`;
+    if(this.breakTargetKey!==key||this.breakTargetId!==hit.id){this.breakTargetKey=key;this.breakTargetId=hit.id;this.breakProgress=0;this.breakTime=Math.max(.18,(info.hardness||1)*1.2/Math.max(1,tool?.power||1));}
+    return true;
+  }
+  stopMining(){this.miningHeld=false;}
+  updateMining(dt){
+    if(!this.miningHeld||!this.running)return;
+    const hit=this.player.raycast();
+    const key=hit?`${hit.block.x},${hit.block.y},${hit.block.z}`:"";
+    if(!hit||key!==this.breakTargetKey||hit.id!==this.breakTargetId){this.breakProgress=0;this.breakTargetKey="";this.breakTargetId=0;this.hideBreakProgress();return;}
+    if(!this.beginMining(hit)){this.stopMining();this.breakProgress=0;this.hideBreakProgress();return;}
+    this.breakProgress=Math.min(1,this.breakProgress+dt/this.breakTime);
+    this.showBreakProgress(this.breakProgress,INFO[hit.id]?.name||"Блок");
+    if(this.breakProgress>=1)this.finishMining(hit);
+  }
+  finishMining(hit){
+    const info=INFO[hit.id]; if(!info?.drop)return;
+    this.miningHeld=false;this.breakProgress=0;this.hideBreakProgress();
+    this.world.setBlock(hit.block.x,hit.block.y,hit.block.z,BLOCK.AIR);
+    this.network.blockChanged(hit.block.x,hit.block.y,hit.block.z,BLOCK.AIR);
+    this.systems.removed(hit.id,hit.block);this.inventory.add(info.drop,1);
+    this.systems.award(2,hit.id===BLOCK.STONE?"Первый камень":"");
+    this.particles.burst(new THREE.Vector3(hit.block.x+.5,hit.block.y+.5,hit.block.z+.5),hit.id===BLOCK.GRASS?0x58a63b:0xb0b0b0,12);
+    this.audio.break();this.effects.hit();if(this.light)this.light.lastScan="";this.breakTargetKey="";this.breakTargetId=0;
+  }
+  breakBlock(){const hit=this.player.raycast();if(!hit)return false;return this.beginMining(hit)}
+ placeBlock(){const hit=this.player.raycast();if(!hit?.previous)return;const p=hit.previous,s=this.inventory.selectedItem(),id=s?.id,info=INFO[id];if(!id||(!info?.solid&&!info?.place))return;let blockId=info.place||id;if(id===ITEM.SEEDS){if(this.world.getBlock(p.x,p.y-1,p.z)!==BLOCK.FARMLAND&&this.world.getBlock(p.x,p.y-1,p.z)!==BLOCK.DIRT)return;blockId=BLOCK.WHEAT}if(this.player.collides({x:p.x+.5,y:p.y,z:p.z+.5}))return;if(!this.inventory.remove(id,1))return;if(!this.world.setBlock(p.x,p.y,p.z,blockId)){this.inventory.add(id,1);return}this.network.blockChanged(p.x,p.y,p.z,blockId);this.audio.block();this.systems.placed(blockId,p);this.systems.award(1,blockId===BLOCK.CHEST?"Строитель":"");this.particles.burst(new THREE.Vector3(p.x+.5,p.y+.5,p.z+.5),0xffffff,5);if(this.light)this.light.lastScan=""}
+ loop(){requestAnimationFrame(()=>this.loop());const now=performance.now(),dt=Math.min(.05,(now-this.last)/1000);this.last=now;this.debug?.update(dt);this.perfFrames++;this.perfTime+=dt;if(this.perfTime>2){const fps=this.perfFrames/this.perfTime;this.perfFrames=0;this.perfTime=0;this.perfCooldown=Math.max(0,this.perfCooldown-2);if(fps<30&&this.perfCooldown<=0){this.perfCooldown=8;this.dynamicPixelRatio=Math.max(.58,this.dynamicPixelRatio-.08);this.renderer.setPixelRatio(Math.min(devicePixelRatio||1,this.dynamicPixelRatio))}else if(fps>55){this.perfStable+=2;if(this.perfStable>=12){this.perfStable=0;this.dynamicPixelRatio=Math.min(this.quality.preset.pixelRatio,this.dynamicPixelRatio+.03);this.renderer.setPixelRatio(Math.min(devicePixelRatio||1,this.dynamicPixelRatio))}}else this.perfStable=0}this.effects.update(dt);this.world.processMeshQueue(this.quality.tier==='low'?1.2:this.quality.tier==='medium'?2.0:2.8);this.mineTimer=Math.max(0,this.mineTimer-dt);this.raycastTimer-=dt;if(this.raycastTimer<=0){this.raycastTimer=.10;this.cachedTarget=this.player.raycast()}const target=this.cachedTarget;if(this.running&&!this.inventoryOpen){this.updateMining(dt);this.time+=dt;this.controls.updateCamera();this.player.move(dt);const moved=Math.hypot(this.player.pos.x-this.lastPlayerX,this.player.pos.z-this.lastPlayerZ);if(moved>.001)this.audio.step();this.lastPlayerX=this.player.pos.x;this.lastPlayerZ=this.player.pos.z;const shake=this.reducedMotion?0:this.effects.consumeShake();if(shake){this.camera.position.x+=(Math.random()-.5)*shake;this.camera.position.y+=(Math.random()-.5)*shake}this.mobTimer+=dt;this.saveTimer+=dt;const phase=(this.time%CONFIG.DAY.LENGTH)/CONFIG.DAY.LENGTH,night=phase<.25||phase>.75;if(this.mobTimer>3){this.mobTimer=0;if(night&&this.mobs.mobs.length<this.mobs.max&&Math.random()<.7){const a=Math.random()*Math.PI*2,r=16+Math.random()*22,x=this.player.pos.x+Math.cos(a)*r,z=this.player.pos.z+Math.sin(a)*r,y=this.findGround(x,z);this.mobs.spawn(x,y,z)}}const oldHealth=this.player.health;if(this.mobs.update(dt,this.player)&&this.player.health<oldHealth){this.effects.damage();this.audio.hurt()}if(this.player.health<=0)this.handleDeath();this.fallTimer+=dt;this.smokeTimer+=dt;this.worldStreamTimer+=dt;if(this.fallTimer>.9){this.fallTimer=0;this.world.tickFalling(this.player)}if(this.smokeTimer>.3){this.smokeTimer=0;this.emitCampfireSmoke()}this.particles.update(dt);this.systems.tick(dt);if(this.light)this.light.update(this.time/CONFIG.DAY.LENGTH*Math.PI*2,this.player,dt);this.network.tick(dt);this.network.update(dt);if(this.weather)this.weather.update(dt,this.player,this.time);if(target){this.outline.visible=true;this.outline.position.set(target.block.x+.5,target.block.y+.5,target.block.z+.5);const op=this.outline.material;op.opacity=.42+this.breakProgress*.48;this.outline.scale.setScalar(1+this.breakProgress*.035)}else{this.outline.visible=false;this.outline.scale.setScalar(1)}if(this.saveTimer>25){this.saveTimer=0;this.save();if(this.network.hosting)this.network.syncHostWorld()}if(this.worldStreamTimer>(this.quality.tier==='low'?1.2:.8)){this.worldStreamTimer=0;this.world.generateAround(this.player.pos.x,this.player.pos.z)}}this.hud.update(target,this.time,dt);this.renderer.render(this.scene,this.camera)}
+ handleDeath(){this.particles.burst(this.player.pos.clone().add(new THREE.Vector3(0,1,0)),0xffffff,35);this.player.health=CONFIG.PLAYER.HEALTH;this.player.hunger=CONFIG.PLAYER.HUNGER;this.player.pos.set(0,this.findGround(0,0)+.02,0);this.mobs.mobs.forEach(m=>m.alive=false);this.save()}
+ makeOutline(){const g=new THREE.BoxGeometry(1.01,1.01,1.01),m=new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:.8,depthTest:false});const o=new THREE.Mesh(g,m);o.visible=false;o.renderOrder=50;this.scene.add(o);return o}
+ emitCampfireSmoke(){const p=this.player.pos;for(const [k] of this.systems.furnaces){const [x,y,z]=k.split(",").map(Number);if(Math.hypot(x-p.x,z-p.z)<18&&this.world.getBlock(x,y,z)===BLOCK.CAMPFIRE)this.particles.smoke(new THREE.Vector3(x+.5,y+1,z+.5),2)}}
+ setupInstall(){window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();this.installPrompt=e;const b=document.getElementById("installButton");if(b)b.textContent="⬇ УСТАНОВИТЬ ПРИЛОЖЕНИЕ"});window.addEventListener("appinstalled",()=>{this.installPrompt=null;const b=document.getElementById("installButton");if(b)b.textContent="✓ ПРИЛОЖЕНИЕ УСТАНОВЛЕНО"});document.addEventListener("fullscreenchange",()=>{const active=!!document.fullscreenElement;for(const id of ["fullscreenButton","fullscreenPauseButton"]){const b=document.getElementById(id);if(b)b.textContent=active?"⛶ ВЫЙТИ ИЗ ПОЛНОГО ЭКРАНА":"⛶ ПОЛНЫЙ ЭКРАН"}})}
+ showInstall(){const panel=document.getElementById("installPanel"),text=document.getElementById("installText"),btn=document.getElementById("nativeInstallButton");panel?.classList.remove("hidden");const standalone=window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone;if(standalone){text.textContent="Игра уже запущена как приложение. Можно включить полный экран из меню паузы.";if(btn)btn.classList.add("hidden");return}if(this.installPrompt){if(btn){btn.textContent="УСТАНОВИТЬ ПРИЛОЖЕНИЕ";btn.classList.remove("hidden")}}else{if(btn)btn.classList.add("hidden");const ios=/iphone|ipad|ipod/i.test(navigator.userAgent);text.textContent=ios?"На iPhone/iPad: нажми «Поделиться» в Safari → «На экран Домой» → «Добавить». После этого игра откроется как отдельное приложение без адресной строки.":"Если браузер поддерживает установку, появится системная кнопка установки. Иначе открой меню браузера и выбери «Установить приложение» или «Добавить на главный экран»."}}
+ async installApp(){if(this.installPrompt){this.installPrompt.prompt();const result=await this.installPrompt.userChoice;if(result.outcome!=="accepted")this.showInstall();this.installPrompt=null;return}this.showInstall()}
+ async requestLandscape(){try{if(screen.orientation?.lock)await screen.orientation.lock("landscape");}catch(e){} }
+async toggleFullscreen(){try{if(document.fullscreenElement){await document.exitFullscreen();return}const el=document.documentElement;if(el.requestFullscreen)await el.requestFullscreen({navigationUI:"hide"});else{const ios=window.navigator.standalone||/iphone|ipad|ipod/i.test(navigator.userAgent);if(ios){const t=document.getElementById("saveToast");t.textContent="Для полноэкранного режима добавь игру на экран Домой";t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200)}}}catch(e){}}
+ setModeBadge(){const e=document.getElementById("modeBadge");if(e){e.textContent=this.mode==="multiplayer"?"ONLINE":this.mode.startsWith("lan-")?"LAN CO-OP":"SINGLEPLAYER";e.className=this.mode==="multiplayer"?"online":this.mode.startsWith("lan-")?"lan":"offline"}}
+ setQuality(tier,persist=true){if(!['low','medium','high'].includes(tier))return;this.quality.choose(tier,persist);CONFIG.QUALITY=this.quality.preset;this.renderer.setPixelRatio(Math.min(devicePixelRatio||1,this.quality.preset.pixelRatio));this.renderer.toneMapping=this.quality.tier==="low"?THREE.NoToneMapping:THREE.ACESFilmicToneMapping;this.renderer.shadowMap.enabled=this.quality.preset.shadows;if(this.light)this.light.maxLights=this.quality.preset.maxLights;this.particles.maxItems=this.quality.preset.particles;this.world.cfg.WORLD.RENDER_DISTANCE=this.quality.preset.renderDistance;this.world.lastCenter="";const v=document.getElementById("qualityValue");if(v)v.textContent=this.quality.tier.toUpperCase()}
+
+ resize(){this.camera.aspect=innerWidth/innerHeight;this.camera.updateProjectionMatrix();this.renderer.setSize(innerWidth,innerHeight)}
+}
+const game=new Game();
+try{if(sessionStorage.getItem("vs_launch_world_v52")==="1"){sessionStorage.removeItem("vs_launch_world_v52");requestAnimationFrame(()=>setTimeout(()=>game.start(),120))}}catch(e){console.warn("Auto world launch skipped",e)}
+const boot=document.getElementById("bootSplash"),bar=document.getElementById("bootProgress"),status=document.getElementById("bootStatus");
+requestAnimationFrame(()=>{if(bar)bar.style.width="100%";if(status)status.textContent="Готово";setTimeout(()=>boot?.classList.add("done"),80)});
+addEventListener("beforeunload",()=>game.save());

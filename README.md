@@ -1,5 +1,1 @@
-# Voxel Survival Universe 24
-
-Optimized mobile build. Universe 24 fixes the Play/startup path: iOS Safari orientation locking can no longer block startup, the first chunk is generated locally, audio failures are non-fatal, and worker generation has a timeout fallback.
-
-Upload the contents of this folder to the GitHub Pages root.
+Voxel Survival Universe 60 — full code audit and menu fix. Fixed runtime crash in QualityManager caused by missing THREE import; hardened menu pointer events; removed menu overlay squares; synchronized world-launch session key and cache version.
