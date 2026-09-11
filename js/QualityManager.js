@@ -1,3 +1,4 @@
+import THREE from "./three.js";
 export class QualityManager {
   constructor() {
     const mem = Number(navigator.deviceMemory || 4);
@@ -12,17 +13,17 @@ export class QualityManager {
   }
   applyTier() {
     const presets = {
-      low: { pixelRatio:.68, renderDistance:3, startupDistance:1, maxLights:6, particles:70, rain:50, clouds:7, shadows:false, maxMobs:6, shadowSize:256 },
-      medium: { pixelRatio:.86, renderDistance:5, startupDistance:1, maxLights:12, particles:140, rain:100, clouds:11, shadows:true, maxMobs:12, shadowSize:512 },
-      high: { pixelRatio:1.05, renderDistance:6, startupDistance:1, maxLights:20, particles:220, rain:160, clouds:16, shadows:true, maxMobs:18, shadowSize:768 }
+      low: { pixelRatio:.62, renderDistance:2, startupDistance:1, maxLights:4, particles:40, rain:35, clouds:5, shadows:false, maxMobs:5, shadowSize:256 },
+      medium: { pixelRatio:.78, renderDistance:4, startupDistance:1, maxLights:8, particles:90, rain:70, clouds:8, shadows:true, maxMobs:9, shadowSize:512 },
+      high: { pixelRatio:.92, renderDistance:5, startupDistance:1, maxLights:14, particles:140, rain:110, clouds:11, shadows:true, maxMobs:14, shadowSize:512 }
     };
     this.preset = presets[this.tier] || presets.medium;
-    if(this.mobile) this.preset={...this.preset,pixelRatio:Math.min(this.preset.pixelRatio,.92),shadows:this.tier==='high'?false:this.preset.shadows};
+    if(this.mobile) this.preset={...this.preset,pixelRatio:Math.min(this.preset.pixelRatio,.92),shadows:this.tier!=='low'};
   }
   configureRenderer(renderer) {
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, this.preset.pixelRatio));
     renderer.shadowMap.enabled = this.preset.shadows;
-    renderer.shadowMap.type = 1;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   }
   choose(tier, persist=true) {
     if(!['low','medium','high'].includes(tier)) return;
