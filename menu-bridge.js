@@ -15,9 +15,17 @@
       if(b)b.textContent="v62.0";
     }
   }
+  function bootEngine(){
+    if(window.__voxelEmergencyLoader)return;
+    window.__voxelEmergencyLoader=true;
+    const s=document.createElement("script");
+    s.type="module";
+    s.src="./js53/boot-fix.js?v=62.1";
+    document.head.appendChild(s);
+  }
   setVersion();
-  window.addEventListener("DOMContentLoaded",setVersion);
-  window.addEventListener("pageshow",()=>{setVersion();document.documentElement.dataset.menuBridge="v62"});
+  window.addEventListener("DOMContentLoaded",()=>{setVersion();setTimeout(bootEngine,80)});
+  window.addEventListener("pageshow",()=>{setVersion();document.documentElement.dataset.menuBridge="v62";setTimeout(bootEngine,80)});
   document.addEventListener("pointerdown",e=>{if(activateAt(e.clientX,e.clientY))e.stopImmediatePropagation()},true);
   document.addEventListener("touchstart",e=>{const t=e.touches&&e.touches[0];if(t&&activateAt(t.clientX,t.clientY)){if(e.cancelable)e.preventDefault();e.stopImmediatePropagation()}},{capture:true,passive:false});
 })();
