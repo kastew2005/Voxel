@@ -1,5 +1,5 @@
 import THREE from "./three.js";
-import {CONFIG} from "./config.js";import {QualityManager} from "./QualityManager.js";import {World} from "./world/World.js";import {Player} from "./player/Player.js";import {Controls} from "./player/Controls.js";import {MobManager} from "./entities/Mob.js";import {Particles} from "./rendering/Particles.js";import {Lighting} from "./rendering/Lighting.js";import {Effects} from "./rendering/Effects.js";import {Weather} from "./rendering/Weather.js";import {AudioManager} from "./audio/AudioManager.js";import {Inventory,RECIPES,craft} from "./inventory/Inventory.js";import {HUD} from "./ui/HUD.js";import {Menu} from "./ui/Menu.js";import {SaveManager} from "./save/SaveManager.js";import {BLOCK,INFO,ITEM,ICON} from "./world/Block.js";import {SurvivalSystems} from "./systems/SurvivalSystems.js";import {NetworkManager} from "./network/NetworkManager.js";import {DebugConsole} from "./debug/DebugConsole.js";
+import {CONFIG} from "./config.js";import {QualityManager} from "./QualityManager.js";import {World} from "./world/World.js";import {Player} from "./player/Player.js";import {Controls} from "./player/Controls.js";import {MobManager} from "./entities/Mob.js";import {Particles} from "./rendering/Particles.js";import {Lighting} from "./rendering/Lighting.js";import {Effects} from "./rendering/Effects.js";import {Weather} from "./rendering/Weather.js";import {AudioManager} from "./audio/AudioManager.js";import {Inventory,RECIPES,craft} from "./inventory/Inventory.js";import {HUD} from "./ui/HUD.js";import {Menu} from "./ui/Menu.js";import {SaveManager} from "./save/SaveManager.js";import {BLOCK,INFO,ITEM,ICON} from "./world/Block.js";import {Chunk} from "./world/Chunk.js";import {SurvivalSystems} from "./systems/SurvivalSystems.js";import {NetworkManager} from "./network/NetworkManager.js";import {DebugConsole} from "./debug/DebugConsole.js";
 class Game{
  constructor(){this.skipUnloadSave=false;const save=SaveManager.loadActive();if(save?.seed)CONFIG.WORLD.SEED=save.seed;this.quality=new QualityManager();CONFIG.QUALITY=this.quality.preset;
   this.scene=new THREE.Scene();this.scene.background=new THREE.Color(0x87c9ef);this.scene.add(new THREE.HemisphereLight(0xffffff,0x4f5f45,1.35));this.scene.add(new THREE.AmbientLight(0xffffff,0.35));this.camera=new THREE.PerspectiveCamera(CONFIG.RENDER.FOV,innerWidth/innerHeight,.05,CONFIG.RENDER.FAR);try{this.renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:this.quality.tier==="low"?"low-power":"high-performance",stencil:false,depth:true,preserveDrawingBuffer:false});}catch(e){throw new Error("WebGL недоступен на этом устройстве: "+(e?.message||e))}this.quality.configureRenderer(this.renderer);if(this.quality.tier==="low")this.renderer.toneMapping=THREE.NoToneMapping;this.renderer.setSize(innerWidth,innerHeight,false);this.renderer.setScissorTest(false);this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.shadowMap.enabled=this.quality.preset.shadows;this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;this.renderer.toneMapping=this.quality.tier==="low"?THREE.NoToneMapping:THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=this.quality.tier==="low"?1:1.05;document.getElementById("game").appendChild(this.renderer.domElement);
@@ -32,12 +32,22 @@ class Game{
     const cx=Math.floor(this.player.pos.x/s),cz=Math.floor(this.player.pos.z/s);
     setBoot(20,"Создаём стартовый участок…");
     if(!this.world.chunks.has(this.world.key(cx,cz))){
-      // Always generate the first chunk on the main thread: this avoids a Safari Worker stall.
-      this.world.generateChunk(cx,cz,false);
+      // Safari-safe startup: generation and mesh building are isolated so one bad
+      // chunk/material cannot abort the entire world launch.
+      try{ this.world.generateChunk(cx,cz,false); }
+      catch(genErr){
+        console.error("START CHUNK GENERATION FAILED",genErr);
+        const safe=new Chunk(cx,cz,s,this.world.cfg.WORLD.HEIGHT);
+        for(let x=0;x<s;x++)for(let z=0;z<s;z++){
+          safe.set(x,0,z,BLOCK.BEDROCK); safe.set(x,1,z,BLOCK.STONE); safe.set(x,2,z,BLOCK.DIRT); safe.set(x,3,z,BLOCK.GRASS);
+        }
+        this.world.chunks.set(this.world.key(cx,cz),safe);
+        try{this.world.queueRebuild(safe)}catch(e){console.warn("SAFE CHUNK QUEUE FAILED",e)}
+      }
     }
     setBoot(48,"Строим первый участок…");
-    // Build only the first queued chunk before entering gameplay.
-    this.world.processMeshQueue(60);
+    try{ this.world.processMeshQueue(60); }
+    catch(meshErr){ console.error("START MESH FAILED",meshErr); }
     setBoot(70,"Настраиваем персонажа…");
     const save=SaveManager.loadActive();
     if(save?.player){
@@ -73,18 +83,25 @@ class Game{
     }));
     if(!matchMedia("(pointer:coarse)").matches) this.renderer.domElement.requestPointerLock?.();
   }catch(err){
-    console.error("WORLD START FAILED",err);
-    this.running=false;
-    this.menu.showMain();
-    if(status)status.textContent="Ошибка мира: "+(err?.message||String(err));
-    const retry=document.getElementById("engineRetry");
-    if(retry)retry.classList.remove("hidden");
+    // Never throw the player back to the main menu. Keep the game alive even if
+    // an optional startup subsystem fails on iOS/Safari.
+    console.error("WORLD START RECOVERED",err);
+    try{
+      this.running=true;
+      this.setGameUI(true);
+      this.camera.position.set(this.player.pos.x,this.player.pos.y+1.62,this.player.pos.z);
+      if(status)status.textContent="Мир запущен в безопасном режиме";
+    }catch(recoveryErr){
+      console.error("WORLD RECOVERY FAILED",recoveryErr);
+      if(status)status.textContent="Не удалось запустить мир";
+      this.setGameUI(false);
+    }
   }finally{
     this.starting=false;
   }
  }
  findGround(x,z){for(let y=CONFIG.WORLD.HEIGHT-1;y>=0;y--)if(INFO[this.world.getBlock(Math.floor(x),y,Math.floor(z))]?.solid)return y+1;return 70}
- newWorld(name="Новый мир",seed=""){this.skipUnloadSave=true;this.running=false;this.network.disconnect();const id=SaveManager.createWorld(name,seed);try{sessionStorage.setItem("vs_launch_world_v60",id)}catch(e){}location.reload()
+ newWorld(name="Новый мир",seed=""){this.skipUnloadSave=true;this.running=false;this.network.disconnect();const id=SaveManager.createWorld(name,seed);try{sessionStorage.setItem("vs_launch_world_v67",id)}catch(e){}location.reload()}
  hostLAN(){this.save();const u=`${location.protocol==="https:"?"wss":"ws"}://${location.host}/ws`;this.mode="lan-host";this.setModeBadge();this.menu.hideMain();this.network.connect(u,true);this.network.chatLine("★ Локальная игра открыта для друзей");this.network.syncHostWorld();this.running=true;if(!matchMedia("(pointer:coarse)").matches)this.renderer.domElement.requestPointerLock?.()}
  connectLAN(){const v=document.getElementById("lanAddress"),u=v?.value.trim();if(!u){this.network.chatLine("Укажи адрес LAN-сервера");return}this.mode="lan-client";this.setModeBadge();this.menu.hideMain();this.network.connect(u,false);this.running=true;if(!matchMedia("(pointer:coarse)").matches)this.renderer.domElement.requestPointerLock?.()}
  resume(){this.menu.hidePause();this.running=true;this.setGameUI(true);this.renderer.domElement.requestPointerLock?.()}
@@ -192,7 +209,7 @@ async toggleFullscreen(){try{if(document.fullscreenElement){await document.exitF
 }
 const game=new Game();
 globalThis.__voxelGame=game;
-try{if(sessionStorage.getItem("vs_launch_world_v61")||sessionStorage.getItem("vs_launch_world_v60")){sessionStorage.removeItem("vs_launch_world_v61");sessionStorage.removeItem("vs_launch_world_v60");requestAnimationFrame(()=>setTimeout(()=>game.start(),120))}}catch(e){console.warn("Auto world launch skipped",e)}
+try{if(sessionStorage.getItem("vs_launch_world_v67")){sessionStorage.removeItem("vs_launch_world_v67");requestAnimationFrame(()=>setTimeout(()=>game.start(),120))}}catch(e){console.warn("Auto world launch skipped",e)}
 const boot=document.getElementById("bootSplash"),bar=document.getElementById("bootProgress"),status=document.getElementById("bootStatus");
 requestAnimationFrame(()=>{if(bar)bar.style.width="100%";if(status)status.textContent="Готово";setTimeout(()=>boot?.classList.add("done"),80)});
 addEventListener("beforeunload",()=>{if(!game.skipUnloadSave)game.save()});
