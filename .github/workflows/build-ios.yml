@@ -1,0 +1,35 @@
+name: Build Voxel Survival iOS IPA
+on:
+  workflow_dispatch:
+  push:
+    branches: [ ios-ipa-build ]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Three.js runtime
+        run: |
+          mkdir -p vendor
+          curl --fail --location --retry 3 https://cdnjs.cloudflare.com/ajax/libs/three.js/0.159.0/three.min.js -o vendor/three.min.js
+          test -s vendor/three.min.js
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Build unsigned app
+        run: |
+          xcodebuild -project VoxelSurvival.xcodeproj -scheme VoxelSurvival -configuration Release -sdk iphoneos -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/VoxelSurvival.app Payload/
+          zip -qry VoxelSurvival-unsigned.ipa Payload
+          test -s VoxelSurvival-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VoxelSurvival-unsigned-IPA
+          path: VoxelSurvival-unsigned.ipa
+          retention-days: 7
