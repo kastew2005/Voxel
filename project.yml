@@ -1,0 +1,40 @@
+name: VoxelSurvival
+options:
+  bundleIdPrefix: com.voxelsurvival
+  deploymentTarget:
+    iOS: "15.0"
+targets:
+  VoxelSurvival:
+    type: application
+    platform: iOS
+    sources:
+      - path: ios/Sources
+      - path: css
+        type: folder
+        buildPhase: resources
+      - path: js53
+        type: folder
+        buildPhase: resources
+      - path: assets
+        type: folder
+        buildPhase: resources
+      - path: vendor
+        type: folder
+        buildPhase: resources
+      - path: index.html
+        buildPhase: resources
+      - path: manifest.webmanifest
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.voxelsurvival.frontier
+        PRODUCT_NAME: Voxel Survival
+        INFOPLIST_KEY_CFBundleDisplayName: Voxel Survival
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIRequiresFullScreen: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.0"
+        IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Manual
